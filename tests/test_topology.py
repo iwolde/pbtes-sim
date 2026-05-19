@@ -7,14 +7,14 @@ import numpy as np
 def base_params():
     tes_params = {
         'Initial temperature': 400,
-        'Tank lenght': 10,
+        'Tank length': 10,
         'Tank diameter': 3,
         'Particle diameter': 0.05,
         'Void fraction': 0.4,
         'Solid density': 2500,
         'Solid specific heat': 1000,
         'Solid conductivity': 1.5,
-        'Wall thinckness': 0.05,
+        'Wall thickness': 0.05,
         'Tank conductivity': 15,
         'Insulation thickness': 0.2,
         'Insulation conductivity': 0.05,

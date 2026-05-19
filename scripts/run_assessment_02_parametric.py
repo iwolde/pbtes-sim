@@ -23,14 +23,14 @@ HTF_TES = 'INCOMP::NaK'
 base_tes_params = {
     'HTF': HTF_TES,
     'Initial temperature': 490,
-    'Tank lenght': 5,
+    'Tank length': 5,
     'Particle diameter': 50e-3,
     'Tank diameter': 7,
     'Void fraction': 0.4,
     'Solid density': 3500,
     'Solid specific heat': 968,
     'Solid conductivity': 1.6,
-    'Wall thinckness': 20e-3,
+    'Wall thickness': 20e-3,
     'Tank conductivity': 45,
     'Insulation thickness': 750e-3,
     'Insulation conductivity': 0.03,
@@ -89,7 +89,7 @@ def run_single(args):
     conexion_params = base_conexion_params.copy()
 
     tes_params['Tank diameter'] = diameter
-    tes_params['Tank lenght'] = length
+    tes_params['Tank length'] = length
 
     solar_fraction = 0.0
     energy_yield_kwh = 0.0

@@ -145,12 +145,12 @@ class Solver:
         # --- Irradiancia suficiente para proceso + carga ---
         if irr > self.E_min_charge:
             # Mode 5: high-T charge when tank is warm and irradiance is sufficient
-            if TES_top > t_ph_out and soc_norm < 0.85:
+            if TES_top > t_ph_out and soc_norm < 0.90:
                 return '5'
             charge_viable = True
             if T_ptc_out is not None:
                 charge_viable = (T_ptc_out > TES_top)
-            if charge_viable and soc_norm < 0.95:
+            if charge_viable and soc_norm < 0.99:
                 return '1'
             else:
                 return '2'
@@ -218,7 +218,7 @@ class Solver:
         
         # ---- Mode 1 (charge + process, computes kA) ----
         self.system_mode = 'Full'; self.TES_lay = 'Charge'; self.irr = 1000
-        sys1 = _make_system(400)
+        sys1 = _make_system(450)  # Design at warmer T_bot for better offdesign CHX DT
         self.solar_system = sys1
         self.solve_network_steady(TESmode='1')
         # Store kA for cross-mode use (Mode 5, 6 share same HX)
@@ -546,11 +546,6 @@ class Solver:
             else:
                 T_in_top = system.tes.profile[-1]
                 system.conn_15.set_attr(T=T_in_top)
-                system.conn_15.set_attr(T=T_in_top)
-            system.conn_04.set_attr(T=T_in_top)
-        else:
-            T_in_top = system.tes.profile[-1]
-            system.conn_15.set_attr(T=T_in_top)
 
         mode_3_fail = False
         old_profile = np.array(system.tes.profile).copy()
@@ -982,6 +977,10 @@ class Solver:
 
         self.solar_system.tes.t_max = 600        
         self._mode_dwell = 0
+        
+        # Reset TES profile to initial temperature
+        T_init = self.tes_params.get('Initial temperature', 550)
+        self.solar_system.tes.profile = np.ones(20) * T_init
         
         for idx, row in tqdm(data_frame.iterrows(), total=len(data_frame), desc="Simulating"):
             

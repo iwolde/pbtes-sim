@@ -2,9 +2,9 @@ import pytest
 import numpy as np
 from coreV5 import SolarThermalSystem, Solver
 
-TES_P = {'Initial temperature': 400, 'Tank lenght': 10, 'Tank diameter': 3,
+TES_P = {'Initial temperature': 400, 'Tank length': 10, 'Tank diameter': 3,
     'Particle diameter': 0.05, 'Void fraction': 0.4, 'Solid density': 2500,
-    'Solid specific heat': 1000, 'Solid conductivity': 1.5, 'Wall thinckness': 0.05,
+    'Solid specific heat': 1000, 'Solid conductivity': 1.5, 'Wall thickness': 0.05,
     'Tank conductivity': 15, 'Insulation thickness': 0.2, 'Insulation conductivity': 0.05,
     'HTF': 'INCOMP::NaK'}
 COMP_P = {'ptc_A': 10000, 'ptc_aoi': 0, 'ptc_doc': 1, 'ptc_tamb': 20,

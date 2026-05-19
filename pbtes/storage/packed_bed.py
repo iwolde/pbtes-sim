@@ -32,14 +32,14 @@ class ThermalEnergyStorage:
         self.valve_state = 'off'  # Valve controlling the TES flow
 
         self.initial_temperature = tes_params['Initial temperature']
-        self.HT = tes_params['Tank lenght']
+        self.HT = tes_params['Tank length']
         self.Dint = tes_params['Tank diameter']
         self.dp = tes_params['Particle diameter']
         self.e = tes_params['Void fraction']
         self.rho_s = tes_params['Solid density']
         self.cp_s = tes_params['Solid specific heat']
         self.k_s = tes_params['Solid conductivity']
-        self.wst = tes_params['Wall thinckness']
+        self.wst = tes_params['Wall thickness']
         self.kst = tes_params['Tank conductivity']
         self.wins = tes_params['Insulation thickness']
         self.kins = tes_params['Insulation conductivity']

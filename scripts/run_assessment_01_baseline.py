@@ -18,14 +18,14 @@ HTF_TES = 'INCOMP::NaK'
 tes_params = {
     'HTF': HTF_TES,
     'Initial temperature': 490,   # °C
-    'Tank lenght': 5,             # m
+    'Tank length': 5,             # m
     'Particle diameter': 50e-3,   # m
     'Tank diameter': 7,           # m
     'Void fraction': 0.4,
     'Solid density': 3500,        # kg/m³
     'Solid specific heat': 968,   # J/(kg·K)
     'Solid conductivity': 1.6,    # W/(m·K)
-    'Wall thinckness': 20e-3,     # m
+    'Wall thickness': 20e-3,     # m
     'Tank conductivity': 45,      # W/(m·K)
     'Insulation thickness': 750e-3,  # m
     'Insulation conductivity': 0.03, # W/(m·K)

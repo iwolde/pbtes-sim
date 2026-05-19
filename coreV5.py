@@ -833,30 +833,30 @@ class SolarThermalSystem:
                     self.network.add_conns(self.conn_01, self.conn_02, self.conn_05, self.conn_06, self.conn_10)
                     for conn in [self.conn_01, self.conn_02, self.conn_05, self.conn_06, self.conn_10]:
                         conn.set_attr(T0=500, h0=700, m0=2)
+        elif mode == 6:
+            # M6 Parallel: two independent cycles in ONE network
+            # Cycle 1: CC → PTC → Charge_HX → CC (PTC charges TES)
+            # Cycle 2: CC2 → PH → PR → CC2 (auxiliary → process)
+            self.cycle_closer2 = tpc.CycleCloser(label='CycleCloser2')
+            self.conn_01 = tpcn.Connection(self.cycle_closer, 'out1', self.ptc_field, 'in1', label='01_CC_PTC')
+            self.conn_02 = tpcn.Connection(self.ptc_field, 'out1', self.charge_tes_hx, 'in1', label='02_PTC_CHX')
+            self.conn_10 = tpcn.Connection(self.charge_tes_hx, 'out1', self.cycle_closer, 'in1', label='10_CHX_CC')
+            self.conn_04 = tpcn.Connection(self.cycle_closer2, 'out1', self.preheater_hx, 'in1', label='04_CC2_PH')
+            self.conn_05 = tpcn.Connection(self.preheater_hx, 'out1', self.process_hx, 'in1', label='05_PH_PR')
+            self.conn_06 = tpcn.Connection(self.process_hx, 'out1', self.cycle_closer2, 'in1', label='06_PR_CC2')
+            if tank_cfg == 'indirect':
+                self.conn_13 = tpcn.Connection(self.tes_ch_source, 'out1', self.charge_tes_hx, 'in2', label='13_CHSC_CHX')
+                self.conn_14 = tpcn.Connection(self.charge_tes_hx, 'out2', self.tes_ch_sink, 'in1', label='14_CHX_CHSK')
+                conns = [self.conn_01, self.conn_02, self.conn_10, self.conn_04, self.conn_05, self.conn_06, self.conn_13, self.conn_14]
             else:
-                # M6 Parallel: two independent cycles in ONE network
-                # Cycle 1: CC → PTC → Charge_HX → CC (PTC charges TES)
-                # Cycle 2: CC2 → PH → PR → CC2 (auxiliary → process)
-                self.cycle_closer2 = tpc.CycleCloser(label='CycleCloser2')
-                self.conn_01 = tpcn.Connection(self.cycle_closer, 'out1', self.ptc_field, 'in1', label='01_CC_PTC')
-                self.conn_02 = tpcn.Connection(self.ptc_field, 'out1', self.charge_tes_hx, 'in1', label='02_PTC_CHX')
-                self.conn_10 = tpcn.Connection(self.charge_tes_hx, 'out1', self.cycle_closer, 'in1', label='10_CHX_CC')
-                self.conn_04 = tpcn.Connection(self.cycle_closer2, 'out1', self.preheater_hx, 'in1', label='04_CC2_PH')
-                self.conn_05 = tpcn.Connection(self.preheater_hx, 'out1', self.process_hx, 'in1', label='05_PH_PR')
-                self.conn_06 = tpcn.Connection(self.process_hx, 'out1', self.cycle_closer2, 'in1', label='06_PR_CC2')
-                if tank_cfg == 'indirect':
-                    self.conn_13 = tpcn.Connection(self.tes_ch_source, 'out1', self.charge_tes_hx, 'in2', label='13_CHSC_CHX')
-                    self.conn_14 = tpcn.Connection(self.charge_tes_hx, 'out2', self.tes_ch_sink, 'in1', label='14_CHX_CHSK')
-                    conns = [self.conn_01, self.conn_02, self.conn_10, self.conn_04, self.conn_05, self.conn_06, self.conn_13, self.conn_14]
-                else:
-                    conns = [self.conn_01, self.conn_02, self.conn_10, self.conn_04, self.conn_05, self.conn_06]
-                self.network.add_conns(*conns)
-                for conn in conns: conn.set_attr(T0=500, h0=700, m0=5)
-                
-                # Cycle 1 anchors (HX + pressure)
-                if tank_cfg == 'indirect':
-                    self.conn_02.set_attr(p=self.conexion_params['6_p'], fluid=self.conexion_params['6_f'])
-                    self.charge_tes_hx.set_attr(pr1=1.0, pr2=1.0)  # kA from Mode 1 design
+                conns = [self.conn_01, self.conn_02, self.conn_10, self.conn_04, self.conn_05, self.conn_06]
+            self.network.add_conns(*conns)
+            for conn in conns: conn.set_attr(T0=500, h0=700, m0=5)
+            
+            # Cycle 1 anchors (HX + pressure)
+            if tank_cfg == 'indirect':
+                self.conn_02.set_attr(p=self.conexion_params['6_p'], fluid=self.conexion_params['6_f'])
+                self.charge_tes_hx.set_attr(pr1=1.0, pr2=1.0)  # kA from Mode 1 design
 
 
         # === STRUCTURAL parameters (always applied, design + offdesign) ===
@@ -1575,11 +1575,11 @@ class Solver:
                             system.conn_10.set_attr(T=system.tes.profile[-1])
                         else:
                             system.conn_13.set_attr(T=system.tes.profile[-1])
-            elif TESmode in ['3']:
-                if tank_cfg == '2tank_direct':
-                    T_tes_in = system.conn_06.T.val
-                    m_tes_in = system.conn_06.m.val_SI
-                elif tank_cfg == 'direct':
+                    elif TESmode in ['3']:
+                        if tank_cfg == '2tank_direct':
+                            T_tes_in = system.conn_06.T.val
+                            m_tes_in = system.conn_06.m.val_SI
+                        elif tank_cfg == 'direct':
                             system.conn_04.set_attr(T=system.tes.profile[-1])
                         else:
                             system.conn_15.set_attr(T=system.tes.profile[-1])
@@ -1861,10 +1861,10 @@ class Solver:
                 else:
                     T_tes_in = system.conn_14.T.val
                     m_tes_in = system.conn_14.m.val_SI
-                    elif TESmode in ['3']:
-                        if tank_cfg == '2tank_direct':
-                            system.conn_hot.set_attr(T=system.tes.profile[-1])
-                        elif tank_cfg == 'direct':
+            elif TESmode in ['3']:
+                if tank_cfg == '2tank_direct':
+                    system.conn_hot.set_attr(T=system.tes.profile[-1])
+                elif tank_cfg == 'direct':
                     T_tes_in = system.conn_11.T.val
                     m_tes_in = system.conn_11.m.val_SI
                 else:

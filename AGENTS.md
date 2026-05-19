@@ -27,26 +27,37 @@ codigos/
 └── base_design_*/     ← TESPy auto-saved design states (gitignored)
 ```
 
-### Target modular structure (WORK IN PROGRESS)
+### Current modular structure (EXTRACTED — May 2026)
 
 ```
 codigos/
-├── pbtes/                    ← future installable package
-│   ├── components/ptc_field.py
-│   ├── storage/packed_bed.py
-│   ├── storage/zinc_pool.py
-│   ├── network/system.py
-│   ├── network/modes.py
-│   ├── simulation/solver.py
-│   ├── simulation/coupling.py
-│   ├── simulation/weather.py
-│   ├── reporting/plots.py
-│   ├── reporting/io.py
-│   ├── reporting/monthly.py
-│   ├── analysis/convergence.py
-│   ├── analysis/economics.py
-│   └── utils/meta.py
-├── scripts/                  ← thin entry points
+├── coreV5.py                ← 38-line re-export shim (backward compatible)
+│
+├── pbtes/                    ← main package
+│   ├── __init__.py           ← Public API: Solver, Reporting, etc.
+│   ├── components/
+│   │   ├── __init__.py
+│   │   └── ptc_field.py      ← PTCField (TESPy component extension)
+│   ├── storage/
+│   │   ├── __init__.py
+│   │   ├── packed_bed.py     ← ThermalEnergyStorage (1D Schumann model)
+│   │   └── zinc_pool.py      ← ZincPool (galvanizing process model)
+│   ├── network/
+│   │   ├── __init__.py
+│   │   └── system.py         ← SolarThermalSystem (6-mode network builder)
+│   ├── simulation/
+│   │   ├── __init__.py
+│   │   └── solver.py         ← Solver (quasi-steady orchestrator)
+│   ├── reporting/
+│   │   ├── __init__.py
+│   │   └── plots.py          ← Reporting (plots, CSV I/O)
+│   ├── analysis/             ← future: convergence.py, economics.py
+│   └── utils/                ← future: shared helpers
+│
+├── sim_year.py, sim_week.py, sim_zinc.py, sim_archive.py
+├── main.py                   ← parametric sweeps
+├── economics.py, errors_analysis.py
+├── scripts/                  ← assessment pipeline
 └── tests/                    ← unit/integration tests
 ```
 

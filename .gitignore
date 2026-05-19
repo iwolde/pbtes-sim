@@ -18,43 +18,26 @@ venv/
 # Pytest
 .pytest_cache/
 
-# OpenCode (keep agent defs, ignore node cruft)
-.opencode/node_modules/
-
-# TESPy generated design directories
+# TESPy generated
 base_design_*/
 mode1_kA.txt
 
-# Output data — simulations
-results_annual.csv
-results_*.csv
-test*.csv
-Result_*.csv
-parametric_results.csv
-transition_report.md
-
-# Output data — analysis
+# Output data
 analysis_out/
 article_results/
 figures/
 report/
-
-# Output data — design
 m5d/
 m5_design/
 hx_final2_design/
 t_hx_design/
+*.csv
+!TMY.csv
 
 # Logs
 *.log
-test_run.log
 
-# Backups and recoveries
-*bak
-*backup*
-*-recover-*
-
-# Archive copies (old designs, data copies)
+# Archive data copies
 archive/*/base_design_*/
 archive/*/TMY.csv
 

@@ -1,6 +1,6 @@
 import pytest
 import CoolProp.CoolProp as CP
-from coreV5 import ThermalEnergyStorage
+from pbtes import ThermalEnergyStorage
 import numpy as np
 
 # Using 'INCOMP::NaK' for Molten Salt as found in mainV5_5.py
@@ -67,6 +67,7 @@ def test_stanton_number_calculation():
     u_in = G / tes.rho_f
     
     expected_St = 0.75 * hw * beta * tes.HT / (rho_cp_line * u_in)
+    assert abs(tes.St - expected_St) < 1e-6
     
 def test_soc_calculation():
     """

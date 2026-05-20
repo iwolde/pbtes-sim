@@ -1,5 +1,5 @@
 import pytest
-from coreV5 import SolarThermalSystem, Solver
+from pbtes import SolarThermalSystem, Solver
 import CoolProp.CoolProp as cp
 import numpy as np
 

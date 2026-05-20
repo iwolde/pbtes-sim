@@ -1,5 +1,5 @@
 import pytest
-from coreV5 import SolarThermalSystem
+from pbtes import SolarThermalSystem
 
 # Basic parameters for testing
 # These can be expanded later if needed

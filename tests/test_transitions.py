@@ -1,6 +1,6 @@
 import pytest
 import numpy as np
-from coreV5 import SolarThermalSystem, Solver
+from pbtes import SolarThermalSystem, Solver
 
 @pytest.fixture
 def system_params():
@@ -36,13 +36,13 @@ def system_params():
     
     conexion_params = {
         '5_T': 520,
-        '6_T': 300,
+        '6_T': 400,
         '6_p': 5,
-        '6_f': {'Water': 1},
+        '6_f': {'INCOMP::NaK': 1},
         '13_p': 5,
-        '13_f': {'Water': 1},
+        '13_f': {'INCOMP::NaK': 1},
         '15_p': 5,
-        '15_f': {'Water': 1},
+        '15_f': {'INCOMP::NaK': 1},
     }
     
     return {
@@ -137,8 +137,8 @@ def test_mass_flow_routing(system_params):
     assert hasattr(system3, 'discharge_tes_hx')
     assert system3.discharge_tes_hx is not None
     # Check mass flow
-    assert system3.conn_04.m.val > 0
-    assert system3.conn_11.m.val > 0
+    assert system3.conn_04.m.val_SI > 0
+    assert system3.conn_11.m.val_SI > 0
     
     # Test 2: Transitioning to Mode 2
     system2 = SolarThermalSystem(**system_params)
@@ -149,7 +149,7 @@ def test_mass_flow_routing(system_params):
     assert not hasattr(system2, 'charge_tes_hx')
     assert not hasattr(system2, 'discharge_tes_hx')
     # Verify all flow goes to process_hx
-    assert system2.conn_05.m.val > 0
+    assert system2.conn_05.m.val_SI > 0
     
     # Test 3: Transitioning to Mode 1 (Charge)
     system1 = SolarThermalSystem(**system_params)
@@ -160,4 +160,4 @@ def test_mass_flow_routing(system_params):
     ok, attempts, err = solver.attempt_to_solve(system1, 'design', 'base_design', '1', tries=3)
     assert ok, "Mode 1 failed to solve"
     assert hasattr(system1, 'charge_tes_hx')
-    assert system1.conn_10.m.val > 0
+    assert system1.conn_10.m.val_SI > 0

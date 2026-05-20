@@ -1,6 +1,6 @@
 import pytest
 import numpy as np
-from coreV5 import SolarThermalSystem, Solver
+from pbtes import SolarThermalSystem, Solver
 
 TES_P = {'Initial temperature': 400, 'Tank length': 10, 'Tank diameter': 3,
     'Particle diameter': 0.05, 'Void fraction': 0.4, 'Solid density': 2500,

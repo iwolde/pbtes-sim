@@ -307,9 +307,8 @@ class ThermalEnergyStorage:
             rho_f = self.rho_out
             cp_f = self.cp_f
 
-        Cp_pb = self.cp_s * self.e + cp_f * (1 - self.e)   # J/(kg K) effective
-        rho_pb = self.rho_s * (1 - self.e) + rho_f * self.e
+        C_vol = self.rho_s * self.cp_s * (1 - self.e) + rho_f * cp_f * self.e
         volume = np.pi * (self.Dint / 2)**2 * self.HT
         dT = np.array(profile) - T_ref
-        SoC = volume * rho_pb * Cp_pb * np.mean(dT)
+        SoC = volume * C_vol * np.mean(dT)
         return max(SoC / 3.6e6, 0.0)  # kWh

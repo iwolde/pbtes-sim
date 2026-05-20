@@ -13,7 +13,7 @@ Mode legend:
 """
 
 import pytest
-from coreV5 import SolarThermalSystem
+from pbtes import SolarThermalSystem
 
 
 def _make_params(topology, tank_config='indirect'):
@@ -112,7 +112,9 @@ def _assert_mode3(system, tank_config):
 
 def _assert_mode4(system, tank_config):
     """Mode 4: Aux → Process → CC (standby)"""
-    pass
+    assert system.conn_04.source.label == 'CycleCloser'
+    assert system.conn_04.target.label == 'Preheater_HX'
+    assert system.conn_05.target.label == 'Process_HX'
 
 
 def _assert_parallel_mode6(system, tank_config):

@@ -65,7 +65,7 @@ class Solver:
         fixed_year = 2022        
 
         # 2) Read TMY
-        tmy_data = pd.read_csv('TMY.csv')#, parse_dates=['Fecha/Hora'])
+        tmy_data = pd.read_csv(csv)#, parse_dates=['Fecha/Hora'])
         
         # Fix the year for all timestamps
         tmy_data['Fecha/Hora'] = pd.to_datetime(tmy_data['Fecha/Hora'])
@@ -201,14 +201,19 @@ class Solver:
         
     def initialize_modes(self):
         import os, shutil, glob
+        base_dir = '.tespy_cache'
+        if os.path.exists(base_dir):
+            for f in glob.glob(os.path.join(base_dir, 'base_design_*')):
+                if os.path.isfile(f):
+                    os.remove(f)
+                else:
+                    shutil.rmtree(f, ignore_errors=True)
         for f in glob.glob('base_design_*'):
             if os.path.isfile(f):
                 os.remove(f)
             else:
                 shutil.rmtree(f, ignore_errors=True)
-        if os.path.exists('mode1_kA.txt'):
-            os.remove('mode1_kA.txt')
-        
+
         def _make_system(T_init):
             self.tes_params['Initial temperature'] = T_init
             return SolarThermalSystem(rows=1, tes_params=self.tes_params,
@@ -221,13 +226,8 @@ class Solver:
         sys1 = _make_system(450)  # Design at warmer T_bot for better offdesign CHX DT
         self.solar_system = sys1
         self.solve_network_steady(TESmode='1')
-        # Store kA for cross-mode use (Mode 5, 6 share same HX)
+        # Store kA in-memory for cross-mode use (Modes 5, 6 share the same HX)
         self.charge_hx_kA = getattr(sys1, 'charge_hx_kA', None)
-        if not self.charge_hx_kA:
-            try:
-                with open('mode1_kA.txt', 'r') as f:
-                    self.charge_hx_kA = float(f.read())
-            except: pass
         
         # ---- Mode 2 (process only) ----
         self.irr = 1000
@@ -259,7 +259,7 @@ class Solver:
         self.current_irr = 1000
         ok5, _, _ = self.attempt_to_solve(sys5, 'design', 'base_design', '5', tries=10)
         if ok5 and sys5.network.converged:
-            sys5.network.save('base_design_5')
+            sys5.network.save(os.path.join('.tespy_cache', 'base_design_5'))
         self.solar_system = sys5
         
         # ---- Mode 6 (full charge, direct solve works) ----
@@ -272,14 +272,14 @@ class Solver:
                 profile=sys6.tes.profile, prev_TES_lay='Charge', mode='design')
             if hasattr(sys6, 'conn_13'): sys6.conn_13.set_attr(T=400)
             sys6.network.solve('design', max_iter=100)
-            sys6.network.save('base_design_6')
+            sys6.network.save(os.path.join('.tespy_cache', 'base_design_6'))
             self.solar_system = sys6
         except Exception as e:
             print(f'[WARNING] Mode 6 design initialization failed: {e}')
             print('          Mode 6 will fall back to Mode 4 at runtime.')
             self.solve_network_steady(TESmode='4')
             try:
-                shutil.copytree('base_design_4', 'base_design_6', dirs_exist_ok=True)
+                shutil.copytree(os.path.join('.tespy_cache', 'base_design_4'), os.path.join('.tespy_cache', 'base_design_6'), dirs_exist_ok=True)
             except Exception:
                 pass
         
@@ -673,7 +673,6 @@ class Solver:
                 else:
                     system.conn_15.set_attr(T=T_tes_out)
                 self.TES_lay = 'Discharge'
-                self.TES_lay = 'Discharge'
 
             # e) Track T_out for our multi-step convergence logic
             T_out_history.append(T_tes_out)
@@ -776,7 +775,7 @@ class Solver:
                 except Exception:
                     pass
 
-            for a in ('Q'):
+            for a in ['Q']:
                 qa = getattr(comp, a, None)
                 if qa is None:
                     continue

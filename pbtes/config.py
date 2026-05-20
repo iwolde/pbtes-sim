@@ -206,6 +206,7 @@ class ZincConfig:
 @dataclass
 class SolverConfig:
     """Orchestration parameters for the quasi-steady simulation."""
+    base_design_dir: str = '.tespy_cache'  # Cache directory for design states
 
     # ── Time ───────────────────────────────────────────────────────────
     time_step: float = 3600.0         # s — 1-hour time step

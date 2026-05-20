@@ -18,38 +18,26 @@ class PTCField(ParabolicTrough):
         self.pr_module = None
 
     def calc_parameters(self):
-        """Override the parent's calculation to handle parallel rows."""
-        # Find inlet connection
-        if not hasattr(self, 'in_conn'):
-            for _ in range(5):
-                for obj in gc.get_objects():
-                    if type(obj).__name__ == 'Connection' and getattr(obj, 'target', None) == self:
-                        self.in_conn = obj
-                        break
-                if hasattr(self, 'in_conn'):
-                    break
-        total_m_in = self.in_conn.m.val_SI
+        """Override the parent's calculation to handle parallel rows cleanly."""
+        # Find inlet and outlet connections natively using self.inl[0] and self.outl[0]
+        i = self.inl[0]
+        o = self.outl[0]
 
-        # Scale flow for a single-row calculation
-        if self.rows > 1:
-            self.in_conn.m.val_SI = total_m_in / self.rows
-
-        # Run parent calculation
-        super().calc_parameters()
-
-        # Scale results back up
-        if self.rows > 1:
-            self.Q.val_SI *= self.rows
-            if hasattr(self, 'Q_loss'):
-                self.Q_loss.val_SI *= self.rows
-
-        # Find outlet connection and restore total flow
-        if not hasattr(self, 'out_conn'):
-            for _ in range(5):
-                for obj in gc.get_objects():
-                    if type(obj).__name__ == 'Connection' and getattr(obj, 'source', None) == self:
-                        self.out_conn = obj
-                        break
-                if hasattr(self, 'out_conn'):
-                    break
-        self.out_conn.m.val_SI = total_m_in
+        # Calculate the total heat transfer rate (which is identical for the whole field or a single row scaled up)
+        self.Q.val = i.m.val_SI * (o.h.val_SI - i.h.val_SI)
+        self.pr.val = o.p.val_SI / i.p.val_SI
+        
+        # Scale flow for pressure loss calculations (zeta represents pressure drop coefficient of a single row)
+        import numpy as np
+        m_row = i.m.val_SI / self.rows
+        self.zeta.val = (
+            (i.p.val_SI - o.p.val_SI) * np.pi ** 2
+            / (4 * (m_row) ** 2 * (i.vol.val_SI + o.vol.val_SI))
+        )
+        
+        if self.energy_group.is_set:
+            # Q_loss represents the total heat loss of the field
+            self.Q_loss.val = - self.E.val * self.A.val + self.Q.val
+            self.Q_loss.is_result = True
+        else:
+            self.Q_loss.is_result = False

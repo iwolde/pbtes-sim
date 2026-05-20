@@ -174,129 +174,150 @@ graph LR
 
 ---
 
-## 2. Direct Parallel Architecture
+## 2. Direct Parallel Architecture (2-Tank)
 
-In the Direct configuration, the intermediate heat exchangers are removed. The primary NaK fluid circulates directly through the storage, which is implemented as a 2-Tank system (Hot Tank and Cold Tank).
+In the Direct configuration, the intermediate heat exchangers (Charge, Discharge, Extra HX) are eliminated. The primary NaK fluid circulates directly through the system. To make engineering sense of the 6 operating modes in a direct system, the storage is implemented as a **2-Tank system (Hot Tank and Cold Tank)** acting as a decoupled buffer, with a bypass valve system to allow direct solar-to-process flow when needed.
 
 ### 2.0 Complete Diagram (Direct Parallel)
+Shows the physical piping. The solar loop and process loop are coupled via the tanks and a bypass valve system (`Valve A` and `Valve B`).
 ```mermaid
 graph LR
-    subgraph Primary Loop
-        Pump --> PTC[Parabolic Trough]
-        PTC --> SP{Splitter}
+    subgraph Solar Loop
+        Pump_Solar --> PTC[Parabolic Trough]
+        PTC --> Valve_A{Valve A}
         
-        %% Charging Branch
-        SP -->|Branch 1| HT[(Hot Tank)]
-        HT -.->|Storage| CT[(Cold Tank)]
-        CT --> MG{Merge}
+        %% Charging path
+        Valve_A -->|Charge| HT[(Hot Tank)]
         
-        %% Process Branch
-        SP -->|Branch 2| DHX_Pipe(Discharge Outlet from Hot Tank)
-        DHX_Pipe --> AUX(Auxiliary Heater / Extra HX)
-        AUX --> PHX(Process HX)
-        
-        PHX --> MG
-        MG --> Pump
+        %% Direct Bypass path
+        Valve_A -->|Direct Bypass| Valve_B{Valve B}
+    end
+    
+    subgraph Storage
+        HT -.->|Internal| CT[(Cold Tank)]
+        CT --> Pump_Solar
     end
     
     subgraph Process Loop
+        %% Discharge path
+        HT -->|Discharge| Valve_B
+        %% Cold draw path
+        CT -->|Cold Draw| Valve_B
+        
+        Valve_B --> AUX(Auxiliary Heater)
+        AUX --> PHX(Process HX)
+        PHX --> CT
+    end
+    
+    subgraph Process (Zinc Pool)
         PHX ===>|Heat| ZP[[Zinc Pool]]
     end
 ```
 
 ### 2.1 Mode 1: Pure Charging
+Solar field runs to charge the Hot Tank. Process loop is off.
 ```mermaid
 graph LR
-    subgraph Primary Loop
-        Pump --> PTC[Parabolic Trough]
-        PTC --> HT[(Hot Tank)]
-        HT -.->|Storage| CT[(Cold Tank)]
-        CT --> Pump
+    subgraph Solar Loop
+        CT[(Cold Tank)] --> Pump_Solar
+        Pump_Solar --> PTC[Parabolic Trough]
+        PTC --> Valve_A{Valve A}
+        Valve_A --> HT[(Hot Tank)]
     end
 ```
 
-### 2.2 Mode 2: Solar to Process (TES Standby)
+### 2.2 Mode 2: Solar to Process (Direct Bypass)
+PTC output bypasses the Hot Tank (to avoid mixing losses) and goes directly to the process.
 ```mermaid
 graph LR
-    subgraph Primary Loop
-        Pump --> PTC[Parabolic Trough]
-        PTC --> PHX(Process HX)
-        PHX --> Pump
+    subgraph Solar Loop
+        CT[(Cold Tank)] --> Pump_Solar
+        Pump_Solar --> PTC[Parabolic Trough]
+        PTC --> Valve_A{Valve A}
+        Valve_A -->|Bypass| Valve_B{Valve B}
     end
     subgraph Process Loop
+        Valve_B --> AUX(Aux Heater - Inactive)
+        AUX --> PHX(Process HX)
+        PHX --> CT
+    end
+    subgraph Process (Zinc Pool)
         PHX ===>|Heat| ZP[[Zinc Pool]]
     end
 ```
 
 ### 2.3 Mode 3: TES Discharge
-Fluid is drawn from the Hot Tank to serve the process, returning to the Cold Tank.
+Solar loop is off. The process loop draws fluid from the Hot Tank.
 ```mermaid
 graph LR
-    subgraph Primary Loop
-        Pump --> HT[(Hot Tank)]
-        HT --> PHX(Process HX)
-        PHX --> CT[(Cold Tank)]
-        CT --> Pump
-    end
     subgraph Process Loop
+        HT[(Hot Tank)] --> Valve_B{Valve B}
+        Valve_B --> AUX(Aux Heater - Inactive)
+        AUX --> PHX(Process HX)
+        PHX --> CT[(Cold Tank)]
+    end
+    subgraph Process (Zinc Pool)
         PHX ===>|Heat| ZP[[Zinc Pool]]
     end
 ```
 
 ### 2.4 Mode 4: Auxiliary Heater Only
+Solar loop is off and Hot Tank is empty. The process loop draws from the Cold Tank and the Auxiliary Heater fires.
 ```mermaid
 graph LR
-    subgraph Primary Loop
-        Pump --> AUX(Auxiliary Heater)
-        AUX --> PHX(Process HX)
-        PHX --> Pump
-    end
     subgraph Process Loop
+        CT[(Cold Tank)] -->|Cold Draw| Valve_B{Valve B}
+        Valve_B --> AUX(Aux Heater - Active)
+        AUX --> PHX(Process HX)
+        PHX --> CT
+    end
+    subgraph Process (Zinc Pool)
         PHX ===>|Heat| ZP[[Zinc Pool]]
     end
 ```
 
-### 2.5 Mode 5: High-Temperature Charging (Parallel)
-The extra HX is in parallel with the 2-Tank charging inlet.
+### 2.5 Mode 5: High-Temperature Charging (Buffer Flow)
+The equivalent of the "Extra HX" in the direct system. PTC fluid is routed into the Hot Tank (depositing the highest temperature fluid at the top), while the process loop simultaneously draws fluid from the Hot Tank.
 ```mermaid
 graph LR
-    subgraph Primary Loop
-        Pump --> PTC[Parabolic Trough]
-        PTC --> SP{Splitter}
-        
-        SP -->|Branch 1| HT[(Hot Tank)]
-        HT -.->|Storage| CT[(Cold Tank)]
-        CT --> MG{Merge}
-        
-        SP -->|Branch 2| AUX(Auxiliary Heater / Extra HX)
-        AUX --> PHX(Process HX)
-        PHX --> MG
-        
-        MG --> Pump
+    subgraph Solar Loop
+        CT[(Cold Tank)] --> Pump_Solar
+        Pump_Solar --> PTC[Parabolic Trough]
+        PTC --> Valve_A{Valve A}
+        Valve_A --> HT[(Hot Tank)]
     end
-    
     subgraph Process Loop
+        HT -->|Discharge| Valve_B{Valve B}
+        Valve_B --> AUX(Aux Heater - Inactive)
+        AUX --> PHX(Process HX)
+        PHX --> CT
+    end
+    subgraph Process (Zinc Pool)
         PHX ===>|Heat| ZP[[Zinc Pool]]
     end
 ```
 
 ### 2.6 Mode 6: Special Cold-Tank Charge
-Two independent loops: one for charging the tanks, one for the process.
+The Hot Tank is too cold. Two independent loops are formed. The solar loop charges the Hot Tank, while the process loop independently draws from the Cold Tank and uses the Aux Heater.
 ```mermaid
 graph LR
     subgraph Loop 1: Charging
-        Pump1 --> PTC[Parabolic Trough]
-        PTC --> HT[(Hot Tank)]
-        HT -.->|Storage| CT[(Cold Tank)]
-        CT --> Pump1
+        CT_Draw1[(Cold Tank)] --> Pump_Solar
+        Pump_Solar --> PTC[Parabolic Trough]
+        PTC --> Valve_A{Valve A}
+        Valve_A --> HT[(Hot Tank)]
     end
     subgraph Loop 2: Processing
-        Pump2 --> AUX(Auxiliary Heater)
+        CT_Draw2[(Cold Tank)] -->|Cold Draw| Valve_B{Valve B}
+        Valve_B --> AUX(Aux Heater - Active)
         AUX --> PHX(Process HX)
-        PHX --> Pump2
+        PHX --> CT_Return[(Cold Tank)]
     end
-    
-    subgraph Process Loop
+    subgraph Process (Zinc Pool)
         PHX ===>|Heat| ZP[[Zinc Pool]]
     end
 ```
+
+---
+
+

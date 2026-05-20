@@ -77,7 +77,8 @@ class SolarThermalSystem:
         self.process_hx = tpc.SimpleHeatExchanger(label='Process_HX')
         self.preheater_hx = tpc.SimpleHeatExchanger(label='Preheater_HX')
         self.cycle_closer = tpc.CycleCloser(label='CycleCloser')
-        self.ptc_field = tpc.ParabolicTrough(label='PTCField')
+        from pbtes.components import PTCField
+        self.ptc_field = PTCField(label='PTCField', rows=self.rows, modules=self.modules)
 
         if mode in [1, 5, 6]:
             if getattr(self, 'tank_config', 'indirect') == 'indirect':
@@ -90,6 +91,13 @@ class SolarThermalSystem:
             if getattr(self, 'tank_config', 'indirect') == 'indirect':
                 self.tes_ch_source = tpc.Source('TES_charge_inlet_source')
                 self.tes_ch_sink   = tpc.Sink('TES_charge_outlet_sink')
+        elif mode == 3:
+            if getattr(self, 'tank_config', 'indirect') == 'indirect':
+                self.discharge_tes_hx = tpc.HeatExchanger(label='Discharge_TES_HX')
+                self.tes_dch_source = tpc.Source('TES_discharge_inlet_source')
+                self.tes_dch_sink   = tpc.Sink('TES_discharge_outlet_sink')
+            else:
+                self.discharge_tes_hx = tpc.SimpleHeatExchanger(label='Discharge_TES_Pipe')
         
         # Mode-specific connections
         if mode == 1:
@@ -111,7 +119,6 @@ class SolarThermalSystem:
                         conn.set_attr(T0=500, h0=700, m0=5, p0=5)
             else:
                 self.conn_02 = tpcn.Connection(self.ptc_field, 'out1', self.splitter1, 'in1', label='02_PTC_SP1')
-                self.conn_02.set_attr(p=self.conexion_params['6_p'], fluid=self.conexion_params['6_f'])
                 self.conn_04 = tpcn.Connection(self.splitter1, 'out1', self.preheater_hx, 'in1', label='04_SP1_PH')
                 self.conn_05 = tpcn.Connection(self.preheater_hx, 'out1', self.process_hx, 'in1', label='05_PH_PR')
                 self.conn_06 = tpcn.Connection(self.process_hx, 'out1', self.merge2, 'in1', label='06_PR_MG2')
@@ -147,7 +154,6 @@ class SolarThermalSystem:
                 self.network.add_conns(self.conn_04, self.conn_05, self.conn_06, self.conn_11, self.conn_15, self.conn_16)
                 for conn in [self.conn_04, self.conn_05, self.conn_06, self.conn_11, self.conn_15, self.conn_16]:
                     conn.set_attr(T0=520, h0=700, m0=30, p0=5)
-                self.conn_15.set_attr(p=self.conexion_params['15_p'], fluid=self.conexion_params['15_f'])
                 self.discharge_tes_hx.set_attr(pr1=1.0, pr2=1.0)
             else:
                 self.conn_04 = tpcn.Connection(self.discharge_tes_hx, 'out1', self.preheater_hx, 'in1', label='04_DHX_PH')
@@ -155,7 +161,7 @@ class SolarThermalSystem:
                 self.network.add_conns(self.conn_04, self.conn_05, self.conn_06, self.conn_11)
                 for conn in [self.conn_04, self.conn_05, self.conn_06, self.conn_11]:
                     conn.set_attr(T0=500, h0=714, m0=35, p0=5)
-                self.discharge_tes_hx.set_attr(pr=0.98)
+                self.discharge_tes_hx.set_attr(pr=1.0)
 
         elif mode == 4:
             self.conn_04 = tpcn.Connection(self.cycle_closer, 'out1', self.preheater_hx, 'in1', label='04_CC_PH')
@@ -223,10 +229,9 @@ class SolarThermalSystem:
         # === STRUCTURAL parameters (always applied, design + offdesign) ===
         
         
-        # PTC pressure drop (Series only)
+        # PTC pressure drop
         if mode in [1, 2, 5, 6]:
-            if getattr(self, 'topology', 'Parallel') == 'Series':
-                self.ptc_field.set_attr(pr=1.0)
+            self.ptc_field.set_attr(pr=1.0)
         
         # Secondary loop connection pressure and fluid (always)
         if mode in [1, 5, 6] and hasattr(self, 'conn_13'):
@@ -234,33 +239,25 @@ class SolarThermalSystem:
         if mode == 3 and hasattr(self, 'conn_15'):
             self.conn_15.set_attr(p=self.conexion_params['15_p'], fluid=self.conexion_params['15_f'])
         
-            if hasattr(self, 'conn_06') and self.conn_06 is not None:
-                self.conn_06.set_attr(
-                    p=self.conexion_params['6_p'],
-                    fluid=self.conexion_params['6_f']
-                )
+        if hasattr(self, 'conn_06') and self.conn_06 is not None:
+            self.conn_06.set_attr(
+                p=self.conexion_params['6_p'],
+                fluid=self.conexion_params['6_f']
+            )
         
-            if mode == 1 and hasattr(self, 'conn_09') and self.conn_09 is not None:
-                self.conn_09.set_attr(p=self.conexion_params['6_p'])
-            elif mode in [5, 6] and hasattr(self, 'conn_02') and self.conn_02 is not None:
-                self.conn_02.set_attr(p=self.conexion_params['6_p'])
-        
-            if hasattr(self, 'conn_06') and self.conn_06 is not None:
-                self.conn_06.set_attr(
-                    p=self.conexion_params['6_p'],
-                    fluid=self.conexion_params['6_f']
-                )
+        if mode in [5, 6] and hasattr(self, 'conn_02') and self.conn_02 is not None:
+            self.conn_02.set_attr(p=self.conexion_params['6_p'])
         
         # HX pressure drops (structural; skip for M6 Parallel - uses conn p anchors)
         is_m6_par = (mode == 6 and getattr(self, 'topology', 'Parallel') == 'Parallel')
         if mode in [1, 5, 6] and hasattr(self, 'charge_tes_hx'):
             if getattr(self, 'tank_config', 'indirect') == 'indirect' and not is_m6_par:
-                self.charge_tes_hx.set_attr(pr1=0.98, pr2=0.98)
-            elif getattr(self, 'tank_config', 'indirect') != 'indirect' and not is_m6_par:
-                self.charge_tes_hx.set_attr(pr=0.98)
+                self.charge_tes_hx.set_attr(pr2=1.0)
         
         # Process pressure drop (always, structural)
         self.process_hx.set_attr(pr=1.0)
+        if getattr(self, 'topology', 'Parallel') == 'Series':
+            self.preheater_hx.set_attr(pr=1.0)
         
         # === BOUNDARY CONDITIONS (always applied) ===
         if hasattr(self, 'conn_05') and self.conn_05 is not None:
@@ -318,13 +315,13 @@ class SolarThermalSystem:
             TES_bot = profile[0]
 
         if TESmode == '1':
-            self.create_network(mode=1, design_mode='design')
+            self.create_network(mode=1, design_mode=mode)
             self.tes.set_state('charge')
             
             TES_bot = self.tes.profile[-1]
             
             if getattr(self, 'tank_config', 'indirect') == 'indirect':
-                self.conn_14.set_attr(T=TES_bot + 40)
+                    self.conn_14.set_attr(T=TES_bot + 20)
             
             self.preheater_hx.set_attr(Q=0)
             
@@ -334,19 +331,29 @@ class SolarThermalSystem:
                 if getattr(self, 'topology', 'Parallel') == 'Series':
                     self.ptc_field.set_attr(A='var')
             else:
-                self.conn_06.set_attr(T=self.conexion_params['6_T'])
-                self.ptc_field.set_attr(E=current_irr)
+                self.ptc_field.set_attr(
+                    E=current_irr, A=self.component_params['ptc_A'],
+                    eta_opt=self.component_params['eta_opt'],
+                    aoi=self.component_params.get('ptc_aoi', 0),
+                    doc=self.component_params.get('ptc_doc', 1),
+                    Tamb=self.component_params.get('ptc_tamb', 20),
+                    c_1=self.component_params.get('ptc_c_1', 0),
+                    c_2=self.component_params.get('ptc_c_2', 0),
+                    iam_1=self.component_params.get('ptc_iam_1', 0),
+                    iam_2=self.component_params.get('ptc_iam_2', 0))
+                if hasattr(self, 'charge_tes_hx') and hasattr(self, 'charge_hx_kA') and self.charge_hx_kA:
+                    self.charge_tes_hx.set_attr(kA=self.charge_hx_kA)
                 if getattr(self, 'topology', 'Parallel') == 'Series':
                     self.process_hx.set_attr(Q=None)
                     if hasattr(self, 'ptc_field_A_designed'):
                         self.ptc_field.set_attr(A=self.ptc_field_A_designed)
                 else:
-                    self.conn_05.set_attr(T=self.conexion_params['5_T'])
+                    pass
         
         elif TESmode == '2':
             # All flow from PTC to process
             self.create_network(mode=2, design_mode=mode)
-            self.preheater_hx.set_attr(Q=0, pr=1.0)
+            self.preheater_hx.set_attr(Q=0)
             if mode == 'design':
                 self.ptc_field.set_attr(
                     aoi=self.component_params['ptc_aoi'], doc=self.component_params['ptc_doc'],
@@ -369,13 +376,19 @@ class SolarThermalSystem:
                 A_guess = 1e6 / (max(current_irr, 100) * self.component_params['eta_opt'])
                 self.ptc_field.A.val = A_guess
         elif TESmode == '3':
-            from tespy.connections import Ref
-            self.create_network(mode=3, design_mode='design')
+            self.create_network(mode=3, design_mode=mode)
             self.tes.set_state('discharge')
             
-            self.conn_04.set_attr(T=Ref(self.conn_15, 1, 20))
-            self.conn_11.set_attr(T=None)
-            self.conn_16.set_attr(T=None)
+            if getattr(self, 'tank_config', 'indirect') == 'indirect':
+                self.conn_15.set_attr(T=TES_top)
+                self.conn_04.set_attr(T=None)
+                self.conn_11.set_attr(T=None)
+                self.conn_16.set_attr(T=None)
+            else:
+                self.conn_04.set_attr(T=TES_top)
+                self.conn_11.set_attr(T=None)
+            
+            self.preheater_hx.set_attr(Q=0)
             
             # Regime selection (offdesign only)
             if mode != 'design':
@@ -383,15 +396,14 @@ class SolarThermalSystem:
                 TES_top = profile[-1] if prev_TES_lay == 'Discharge' else profile[0]
                 if TES_top >= t_ph_out:
                     self.conn_05.set_attr(T=None)
-            self.preheater_hx.set_attr(Q=0, pr=1.0)
 
         elif TESmode == '4':
-            self.create_network(mode=4, design_mode='design')
+            self.create_network(mode=4, design_mode=mode)
              
         elif TESmode == '5':
             # Mode 5: Series high-T charge (PTC -> HX -> PH -> PR -> CC)
             # Uses its own high-temperature charge HX (sized via ttd_l)
-            self.create_network(mode=5, design_mode='design')
+            self.create_network(mode=5, design_mode=mode)
             self.tes.set_state('charge')
             
             TES_bot = self.tes.profile[-1]
@@ -402,37 +414,29 @@ class SolarThermalSystem:
             self.preheater_hx.set_attr(pr=1.0)
             
             if mode == 'offdesign':
-                self.ptc_field.set_attr(E=current_irr)
+                self.ptc_field.set_attr(
+                    E=current_irr, A=self.component_params['ptc_A'],
+                    eta_opt=self.component_params['eta_opt'],
+                    aoi=self.component_params.get('ptc_aoi', 0),
+                    doc=self.component_params.get('ptc_doc', 1),
+                    Tamb=self.component_params.get('ptc_tamb', 20),
+                    c_1=self.component_params.get('ptc_c_1', 0),
+                    c_2=self.component_params.get('ptc_c_2', 0),
+                    iam_1=self.component_params.get('ptc_iam_1', 0),
+                    iam_2=self.component_params.get('ptc_iam_2', 0))
+                if hasattr(self, 'charge_tes_hx') and hasattr(self, 'charge_hx_kA') and self.charge_hx_kA:
+                    self.charge_tes_hx.set_attr(kA=self.charge_hx_kA)
 
         elif TESmode == '6':
             is_m6par = (getattr(self, 'topology', 'Parallel') == 'Parallel')
-            self.create_network(mode=6, design_mode='design')
+            self.create_network(mode=6, design_mode=mode)
             self.tes.set_state('charge')
             
             TES_bot = self.tes.profile[-1]
             
             if is_m6par:
-                self.process_hx.set_attr(Q=self.component_params['PR_Q'])
-                self.conn_05.set_attr(T=self.conexion_params['5_T'])
-                self.conn_06.set_attr(T=self.conexion_params['6_T'])
-                if mode == 'design':
-                    self.ptc_field.set_attr(
-                        A=self.component_params['ptc_A'], E=self.component_params['ptc_E'],
-                        eta_opt=self.component_params['eta_opt'],
-                        aoi=self.component_params.get('ptc_aoi', 0),
-                        doc=self.component_params.get('ptc_doc', 1),
-                        Tamb=self.component_params.get('ptc_tamb', 20),
-                        c_1=self.component_params.get('ptc_c_1', 0),
-                        c_2=self.component_params.get('ptc_c_2', 0),
-                        iam_1=self.component_params.get('ptc_iam_1', 0),
-                        iam_2=self.component_params.get('ptc_iam_2', 0)
-                    )
-                else:
-                    self.ptc_field.set_attr(E=current_irr)
-            if getattr(self, 'tank_config', 'indirect') == 'indirect':
-                self.conn_14.set_attr(T=TES_bot + 40)
-            
-            if is_m6par:
+                if getattr(self, 'tank_config', 'indirect') == 'indirect':
+                    self.conn_14.set_attr(T=TES_bot + 20)
                 self.conn_02.set_attr(T=self.conexion_params['5_T'])
                 if mode == 'design':
                     self.ptc_field.set_attr(
@@ -461,19 +465,9 @@ class SolarThermalSystem:
                 self.process_hx.set_attr(Q=self.component_params['PR_Q'])
                 self.conn_05.set_attr(T=self.conexion_params['5_T'])
                 self.conn_06.set_attr(T=self.conexion_params['6_T'])
-                if not hasattr(self, 'charge_hx_kA'):
-                    try:
-                        with open('mode1_kA.txt', 'r') as f:
-                            self.charge_hx_kA = float(f.read())
-                    except: pass
-                if hasattr(self, 'charge_hx_kA'):
+                if hasattr(self, 'charge_hx_kA') and self.charge_hx_kA:
                     self.charge_tes_hx.set_attr(kA=self.charge_hx_kA)
             else:
-                if not hasattr(self, 'charge_hx_kA'):
-                    try:
-                        with open('mode1_kA.txt', 'r') as f:
-                            self.charge_hx_kA = float(f.read())
-                    except: pass
                 if hasattr(self, 'charge_hx_kA') and self.charge_hx_kA:
                     self.charge_tes_hx.set_attr(kA=self.charge_hx_kA)
                 if mode == 'design':
@@ -498,11 +492,13 @@ class SolarThermalSystem:
             use_init_path (bool): if True, warm-start offdesign from design solution.
         """
 
-        name = f'base_design_{TESmode}'        
+        import os, shutil, time
+        base_dir = '.tespy_cache'
+        os.makedirs(base_dir, exist_ok=True)
+        name = os.path.join(base_dir, f'base_design_{TESmode}')        
         if mode == 'design':
 
             self.network.solve(mode=mode, max_iter=100)
-            import shutil, os, time
             abs_name = os.path.abspath(name)
             if os.path.exists(abs_name):
                 try:
@@ -521,16 +517,13 @@ class SolarThermalSystem:
                 self.ptc_field_A_designed = self.ptc_field.A.val
             if (TESmode == '1' and hasattr(self, 'charge_tes_hx')
                     and self.charge_tes_hx.kA.val is not None):
+                # Store kA in-memory for cross-mode use (Modes 5, 6 share the same HX)
                 self.charge_hx_kA = self.charge_tes_hx.kA.val
-                # Store kA to file for cross-mode use
-                try:
-                    with open('mode1_kA.txt', 'w') as f:
-                        f.write(str(self.charge_hx_kA))
-                except: pass
         else:
-            kwargs = {'mode': mode, 'max_iter': 200, 'design_path': f'base_design_{TESmode}'}
+            design_path_full = os.path.join(base_dir, f'base_design_{TESmode}')
+            kwargs = {'mode': mode, 'max_iter': 200, 'design_path': design_path_full}
             if use_init_path:
-                kwargs['init_path'] = f'base_design_{TESmode}'
+                kwargs['init_path'] = design_path_full
             self.network.solve(**kwargs)
             #if not self.network.converged:
             #    raise RuntimeError("TESPy solver did not converge.")

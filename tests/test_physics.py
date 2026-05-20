@@ -1,6 +1,6 @@
 import pytest
 import CoolProp.CoolProp as CP
-from coreV5 import ThermalEnergyStorage
+from pbtes import ThermalEnergyStorage
 import numpy as np
 
 # Using 'INCOMP::NaK' for Molten Salt as found in mainV5_5.py
@@ -34,14 +34,14 @@ def test_stanton_number_calculation():
     tes_params = {
         'HTF': 'INCOMP::NaK',
         'Initial temperature': 400,
-        'Tank lenght': 10,
+        'Tank length': 10,
         'Particle diameter': 0.05,
         'Tank diameter': 3,
         'Void fraction': 0.4,
         'Solid density': 2300,
         'Solid specific heat': 1000,
         'Solid conductivity': 1.6,
-        'Wall thinckness': 0.02,
+        'Wall thickness': 0.02,
         'Tank conductivity': 45,
         'Insulation thickness': 0.75,
         'Insulation conductivity': 0.03,
@@ -67,6 +67,7 @@ def test_stanton_number_calculation():
     u_in = G / tes.rho_f
     
     expected_St = 0.75 * hw * beta * tes.HT / (rho_cp_line * u_in)
+    assert abs(tes.St - expected_St) < 1e-6
     
 def test_soc_calculation():
     """
@@ -75,14 +76,14 @@ def test_soc_calculation():
     tes_params = {
         'HTF': 'INCOMP::NaK',
         'Initial temperature': 400,
-        'Tank lenght': 10,
+        'Tank length': 10,
         'Particle diameter': 0.05,
         'Tank diameter': 3,
         'Void fraction': 0.4,
         'Solid density': 2300,
         'Solid specific heat': 1000,
         'Solid conductivity': 1.6,
-        'Wall thinckness': 0.02,
+        'Wall thickness': 0.02,
         'Tank conductivity': 45,
         'Insulation thickness': 0.75,
         'Insulation conductivity': 0.03,

@@ -98,7 +98,7 @@ def fig_baseline_timeseries():
         return
 
     # Load with meta line
-    from coreV5 import Reporting
+    from pbtes.reporting.plots import Reporting
     report = Reporting()
     df, meta = report.load_simulation_from_csv(csv)
 

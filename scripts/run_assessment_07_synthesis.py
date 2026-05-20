@@ -23,7 +23,7 @@ def main():
     lines.append('## 1. Baseline Annual Simulation\n')
     baseline_csv = os.path.join(BASE_DIR, '01_baseline', 'baseline_parallel.csv')
     if os.path.exists(baseline_csv):
-        from coreV5 import Reporting
+        from pbtes.reporting.plots import Reporting
         report = Reporting()
         df, meta = report.load_simulation_from_csv(baseline_csv)
 

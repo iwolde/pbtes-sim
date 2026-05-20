@@ -20,7 +20,9 @@ venv/
 
 # TESPy generated
 base_design_*/
-mode1_kA.txt
+
+# TESPy design state cache
+.tespy_cache/
 
 # Output data
 analysis_out/
@@ -34,12 +36,12 @@ t_hx_design/
 *.csv
 !TMY.csv
 
+# Simulation results
+results/
+!results/README.md
+
 # Logs
 *.log
-
-# Archive data copies
-archive/*/base_design_*/
-archive/*/TMY.csv
 
 # OS junk
 Thumbs.db

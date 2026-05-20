@@ -13,21 +13,21 @@ Mode legend:
 """
 
 import pytest
-from coreV5 import SolarThermalSystem
+from pbtes import SolarThermalSystem
 
 
 def _make_params(topology, tank_config='indirect'):
     """Minimal valid parameters for network construction."""
     tes_params = {
         'Initial temperature': 500,
-        'Tank lenght': 10,
+        'Tank length': 10,
         'Tank diameter': 3,
         'Particle diameter': 0.05,
         'Void fraction': 0.4,
         'Solid density': 2500,
         'Solid specific heat': 1000,
         'Solid conductivity': 1.5,
-        'Wall thinckness': 0.05,
+        'Wall thickness': 0.05,
         'Tank conductivity': 15,
         'Insulation thickness': 0.2,
         'Insulation conductivity': 0.05,
@@ -112,7 +112,9 @@ def _assert_mode3(system, tank_config):
 
 def _assert_mode4(system, tank_config):
     """Mode 4: Aux → Process → CC (standby)"""
-    pass
+    assert system.conn_04.source.label == 'CycleCloser'
+    assert system.conn_04.target.label == 'Preheater_HX'
+    assert system.conn_05.target.label == 'Process_HX'
 
 
 def _assert_parallel_mode6(system, tank_config):

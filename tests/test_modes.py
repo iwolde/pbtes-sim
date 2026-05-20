@@ -1,18 +1,18 @@
 import pytest
-from coreV5 import SolarThermalSystem
+from pbtes import SolarThermalSystem
 
 # Basic parameters for testing
 # These can be expanded later if needed
 TES_PARAMS = {
     'Initial temperature': 400,
-    'Tank lenght': 10,
+    'Tank length': 10,
     'Tank diameter': 3,
     'Particle diameter': 0.05,
     'Void fraction': 0.4,
     'Solid density': 2300,
     'Solid specific heat': 1000,
     'Solid conductivity': 0.5,
-    'Wall thinckness': 0.05,
+    'Wall thickness': 0.05,
     'Tank conductivity': 15,
     'Insulation thickness': 0.1,
     'Insulation conductivity': 0.04,

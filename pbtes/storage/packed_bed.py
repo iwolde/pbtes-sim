@@ -32,14 +32,14 @@ class ThermalEnergyStorage:
         self.valve_state = 'off'  # Valve controlling the TES flow
 
         self.initial_temperature = tes_params['Initial temperature']
-        self.HT = tes_params['Tank lenght']
+        self.HT = tes_params['Tank length']
         self.Dint = tes_params['Tank diameter']
         self.dp = tes_params['Particle diameter']
         self.e = tes_params['Void fraction']
         self.rho_s = tes_params['Solid density']
         self.cp_s = tes_params['Solid specific heat']
         self.k_s = tes_params['Solid conductivity']
-        self.wst = tes_params['Wall thinckness']
+        self.wst = tes_params['Wall thickness']
         self.kst = tes_params['Tank conductivity']
         self.wins = tes_params['Insulation thickness']
         self.kins = tes_params['Insulation conductivity']
@@ -307,9 +307,8 @@ class ThermalEnergyStorage:
             rho_f = self.rho_out
             cp_f = self.cp_f
 
-        Cp_pb = self.cp_s * self.e + cp_f * (1 - self.e)   # J/(kg K) effective
-        rho_pb = self.rho_s * (1 - self.e) + rho_f * self.e
+        C_vol = self.rho_s * self.cp_s * (1 - self.e) + rho_f * cp_f * self.e
         volume = np.pi * (self.Dint / 2)**2 * self.HT
         dT = np.array(profile) - T_ref
-        SoC = volume * rho_pb * Cp_pb * np.mean(dT)
+        SoC = volume * C_vol * np.mean(dT)
         return max(SoC / 3.6e6, 0.0)  # kWh

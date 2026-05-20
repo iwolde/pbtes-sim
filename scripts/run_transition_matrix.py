@@ -2,10 +2,8 @@ import os
 import sys
 import numpy as np
 
-# Add parent directory to path to import coreV5
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
-from coreV5 import SolarThermalSystem, Solver
+from pbtes.network.system import SolarThermalSystem
+from pbtes.simulation.solver import Solver
 
 def generate_report():
     tes_params = {

@@ -1,15 +1,10 @@
 """
-core.py
+coreV5.py — Backward Compatibility Shim
+=========================================
+Re-exports all public classes from the pbtes/ package so that any legacy
+scripts using `from coreV5 import ...` continue to work without modification.
 
-This module contains:
-1) The SolarThermalSystem class, which builds and solves a TESPy network
-   with supercritical CO2 as the working fluid, a pump, a parabolic
-   trough collector, and a simple process heat exchanger.
-
-2) The Reporting class, which handles plotting of results from a parametric
-   analysis or time-step simulation.
-
-All methods are commented with details on their purpose and functionality.
+Do NOT add new logic here. All new code goes in pbtes/.
 """
 import tespy.networks as tpn
 import tespy.connections as tpcn

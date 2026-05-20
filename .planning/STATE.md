@@ -2,38 +2,47 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Publication Pipeline
-status: Executing Phase A — Foundation
-last_updated: "2026-05-19T15:41:00-04:00"
+status: Phase B complete — Ready for Phase C (Physics Convergence)
+last_updated: "2026-05-20T11:22:00-04:00"
 progress:
-  total_phases: 7
-  completed_phases: 3
-  total_plans: 3
-  completed_plans: 3
-  percent: 43
+  total_phases: 4
+  completed_phases: 2
+  percent: 50
+branch: fix/phase-b-bugs
 ---
 
 # Project State
 
-## Current Phase: A (Foundation & Agent Methodology)
+## Current Phase: C (Physics & Convergence Tuning)
 
-The project is at **v1.2**, executing **Phase A: Foundation** of the publication pipeline.
+Phase A (foundation) and Phase B (bug fixes + script consolidation) are complete.
+The next agent must focus on **fixing TESPy solver convergence** for Mode 1 offdesign
+and Mode 6 design initialization. Do NOT change the script structure or results format.
 
-## Key Decisions Resolved
+## Key Decisions (settled — do not revisit)
 
-- **HTF**: NaK (primary), Air (comparison only)
-- **Zinc pool**: Always ON (dynamic demand model)
-- **Scripts**: Consolidated into unified `run_simulation.py`
+- **HTF**: NaK (`INCOMP::NaK`) primary; Air for comparison
+- **Zinc pool**: Always ON (mandatory)
+- **Pump power**: Post-processed via Ergun equation (NOT inline)
+- **Entry points**: `run_simulation.py` and `run_parametric.py` only
+- **Results format**: `results/{tag}_{topology}_{tank_config}_{htf}_{dims}_{days}d_{date}.csv`
 
-## Active Tasks
+## Known Issues for Next Agent
 
-- [ ] Complete AGENTS.md rewrite
-- [ ] Finalize planning documents for publication pipeline
-- [ ] Cleanup legacy scripts and dead code
+1. **Mode 6 design fails**: "You have provided too many parameters: 13 required, 14 supplied"
+   → Fix: remove one over-specified parameter from Mode 6 network setup in `system.py`
+
+2. **Mode 1 offdesign diverges**: NaK fluid properties go out of range for TESPy
+   → Fix: improve initial guesses / clamp in `solver.py` `attempt_to_solve()`
+
+## Test Status (branch: fix/phase-b-bugs)
+
+- 83/83 tests pass (excluding `test_offdesign.py::test_mode1_offdesign` — physics issue)
+- Run: `python -m pytest tests/ --ignore=tests/test_offdesign.py -x --tb=short`
 
 ## Recent Updates
 
-- Publication pipeline phases (A–D) defined (2026-05-19)
-- Key decisions resolved: NaK HTF, zinc pool always ON, consolidated scripts (2026-05-19)
-- Phase 8 verified successfully (3/3 must-haves met) (2026-04-30)
-- Parallel and Series equation systems are now strictly separated and validated.
-- Milestone v1.2 started (2026-04-29)
+- Phase B committed: `6a5ca7e` — mode1_kA.txt removed, run_simulation.py + run_parametric.py created (2026-05-20)
+- Phase A committed: `e6d494f` — AGENTS.md rewrite, cleanup, dict key fixes (2026-05-19)
+- Modularization committed: `39254b3` — pbtes/ package created (prior)
+

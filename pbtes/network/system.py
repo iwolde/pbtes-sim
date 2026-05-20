@@ -341,14 +341,9 @@ class SolarThermalSystem:
                     c_2=self.component_params.get('ptc_c_2', 0),
                     iam_1=self.component_params.get('ptc_iam_1', 0),
                     iam_2=self.component_params.get('ptc_iam_2', 0))
-                if hasattr(self, 'charge_tes_hx'):
-                    if not hasattr(self, 'charge_hx_kA') or not self.charge_hx_kA:
-                        try:
-                            with open('mode1_kA.txt', 'r') as f:
-                                self.charge_hx_kA = float(f.read())
-                        except: pass
-                    if hasattr(self, 'charge_hx_kA') and self.charge_hx_kA:
-                        self.charge_tes_hx.set_attr(kA=self.charge_hx_kA)
+                # CHX ttd_l placeholder for DOF check; design file overrides with kA
+                if hasattr(self, 'charge_tes_hx') and getattr(self, 'tank_config', 'indirect') == 'indirect':
+                    self.charge_tes_hx.set_attr(ttd_l=20)
                 if getattr(self, 'topology', 'Parallel') == 'Series':
                     self.process_hx.set_attr(Q=None)
                     if hasattr(self, 'ptc_field_A_designed'):
@@ -368,9 +363,8 @@ class SolarThermalSystem:
                     c_2=self.component_params['ptc_c_2'], E=self.component_params['ptc_E'],
                     iam_1=self.component_params['ptc_iam_1'], iam_2=self.component_params['ptc_iam_2'])
             else:
-                A_guess = abs(self.component_params.get('PR_Q', 450000)) / (max(current_irr, 100) * self.component_params['eta_opt'])
                 self.ptc_field.set_attr(
-                    E=current_irr, A=A_guess,
+                    E=current_irr, A='var',
                     eta_opt=self.component_params['eta_opt'],
                     aoi=self.component_params.get('ptc_aoi', 0),
                     doc=self.component_params.get('ptc_doc', 1),
@@ -379,23 +373,36 @@ class SolarThermalSystem:
                     c_2=self.component_params.get('ptc_c_2', 0),
                     iam_1=self.component_params.get('ptc_iam_1', 0),
                     iam_2=self.component_params.get('ptc_iam_2', 0))
+                A_guess = abs(self.component_params.get('PR_Q', 450000)) / (max(current_irr, 100) * self.component_params.get('eta_opt', 0.75))
+                try: self.ptc_field.A.val = A_guess
+                except: pass
                 # Set initial guess for A to avoid solver stall
                 A_guess = 1e6 / (max(current_irr, 100) * self.component_params['eta_opt'])
                 self.ptc_field.A.val = A_guess
         elif TESmode == '3':
+            from tespy.connections import Ref
             self.create_network(mode=3, design_mode=mode)
             self.tes.set_state('discharge')
             
-            if getattr(self, 'tank_config', 'indirect') == 'indirect':
-                self.conn_15.set_attr(T=TES_top)
-                self.conn_04.set_attr(T=None)
-                self.conn_11.set_attr(T=None)
-                self.conn_16.set_attr(T=None)
-            else:
-                self.conn_04.set_attr(T=TES_top)
-                self.conn_11.set_attr(T=None)
+            self.conn_04.set_attr(T=Ref(self.conn_15, 1, 20))   # T04 = T15 - 20
+            self.conn_11.set_attr(T=None)
+            self.conn_16.set_attr(T=None)
             
-            self.preheater_hx.set_attr(Q=0)
+            # DHX ttd_l placeholder for DOF check; design file overrides with kA
+            if hasattr(self, 'discharge_tes_hx') and getattr(self, 'tank_config', 'indirect') == 'indirect':
+                self.discharge_tes_hx.set_attr(ttd_l=20)
+            
+            # Regime selection (offdesign only)
+            if mode != 'design':
+                t_ph_out = self.conexion_params['5_T']
+                TES_top = profile[-1] if prev_TES_lay == 'Discharge' else profile[0]
+                if TES_top >= t_ph_out:
+                    self.conn_05.set_attr(T=None)
+                    self.preheater_hx.set_attr(Q=0)
+            
+            # DHX ttd_l placeholder for DOF check; design file overrides with kA
+            if hasattr(self, 'discharge_tes_hx') and getattr(self, 'tank_config', 'indirect') == 'indirect':
+                self.discharge_tes_hx.set_attr(ttd_l=20)
             
             # Regime selection (offdesign only)
             if mode != 'design':
@@ -431,8 +438,9 @@ class SolarThermalSystem:
                     c_2=self.component_params.get('ptc_c_2', 0),
                     iam_1=self.component_params.get('ptc_iam_1', 0),
                     iam_2=self.component_params.get('ptc_iam_2', 0))
-                if hasattr(self, 'charge_tes_hx') and hasattr(self, 'charge_hx_kA') and self.charge_hx_kA:
-                    self.charge_tes_hx.set_attr(kA=self.charge_hx_kA)
+                # CHX ttd_l placeholder for DOF check; design file overrides with kA
+                if hasattr(self, 'charge_tes_hx') and getattr(self, 'tank_config', 'indirect') == 'indirect':
+                    self.charge_tes_hx.set_attr(ttd_l=20)
 
         elif TESmode == '6':
             is_m6par = (getattr(self, 'topology', 'Parallel') == 'Parallel')

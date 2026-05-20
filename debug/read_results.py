@@ -1,6 +1,6 @@
 """Read 7-day assessment results."""
 import pandas as pd, numpy as np
-df = pd.read_csv('results/fixed_Parallel_indirect_NaK_D7.0_H5.0_A1000_7d_20260520.csv', skiprows=1)
+df = pd.read_csv('results/m3fix_Parallel_indirect_NaK_D7.0_H5.0_A1000_7d_20260520.csv', skiprows=1)
 print('=== MODE DISTRIBUTION ===')
 print(df['TESmode'].value_counts().to_string())
 print()

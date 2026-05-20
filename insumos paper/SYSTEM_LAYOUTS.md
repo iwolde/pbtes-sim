@@ -1,47 +1,50 @@
-# PBTES Solar Plant: Layouts, Modes, and Configurations
+# PBTES Solar Plant: Layouts and Operating Modes
 
-This document provides a comprehensive overview of the plant configurations, the distinction between different topologies, and how the operating modes dictate fluid routing.
+This document details the exact fluid routing for the 6 operating modes in both the **Indirect Parallel** and **Direct Parallel** architectures. 
 
----
-
-## 1. Topologies & Tank Configurations
-
-The project matrix explores four distinct architectural variants, formed by combining two routing **Topologies** (Parallel vs Series) and two **Tank Configurations** (Indirect vs Direct).
-
-### 1.1 Parallel vs. Series (Topologies)
-This defines how the Solar Field (PTC) interfaces with the Process Heat Exchanger and the Thermal Energy Storage.
-
-- **Parallel Topology**: The hot fluid exiting the PTC encounters a splitter. The flow is divided into parallel branches depending on the mode.
-- **Series Topology**: The hot fluid from the PTC travels through the system in a single series loop, passing sequentially through the components.
-
-### 1.2 Indirect vs. Direct (Tank Configurations)
-This defines whether the primary Heat Transfer Fluid (HTF) physically enters the storage tanks.
-
-- **Indirect Config (Baseline)**: The Primary Loop (PTC and Process) is completely isolated from the Secondary Loop (TES). They exchange heat via two dedicated heat exchangers: `Charge_TES_HX` and `Discharge_TES_HX`.
-- **Direct Config (2-Tank Approach)**: There is only one fluid loop. The primary HTF (NaK) circulates directly through the PBTES and the process. The PBTES is configured using a **2-tank system** (Hot Tank and Cold Tank) for storage. The heat exchangers are removed (represented as simple virtual pipes in the model) to eliminate the temperature approach (TTD) penalty.
+*Note: In the Direct architecture, the Packed Bed Thermal Energy Storage (PBTES) is implemented as a 2-Tank system (Hot Tank and Cold Tank) directly circulating the primary HTF.*
 
 ---
 
-## 2. Operating Modes Summary
+## 1. Indirect Parallel Architecture
 
-The simulation utilizes six distinct operating modes depending on the current Solar Irradiance (DNI) and the TES State of Charge (SoC).
+In the Indirect configuration, the primary NaK loop is isolated from the TES loop via dedicated heat exchangers (`Charge TES HX` and `Discharge TES HX`).
 
-| Mode | Name | Description | Active Components |
-|------|------|-------------|-------------------|
-| **1** | Pure Charging | **Solar charges TES.** Used when process demand is off or fully met, routing all solar heat to the TES. | PTC, Charge TES HX |
-| **2** | Solar to Process | **Solar serves process only.** Solar irradiance matches process demand; TES is inactive. | PTC, Process HX |
-| **3** | TES Discharge | **TES discharging.** Solar is insufficient/off. TES discharges heat to the process loop. | Discharge TES HX, Process HX |
-| **4** | Auxiliary Heater Only | **Auxiliary firing.** Solar is off and TES is depleted. The Auxiliary Heater provides 100% of process heat. | Aux Heater, Process HX |
-| **5** | High-Temperature Charging | **High-T Charging + Process.** A special series mode that forces fluid from PTC → Charge TES HX (highest temp) → Additional HX (Preheater/Aux) → Process HX. This ensures the TES charges at the highest possible temperature. | PTC, Charge TES HX, Aux Heater, Process HX |
-| **6** | Special Cold-Tank Charge | **Two Independent Loops.** A special mode used when the tank is too cold. All PTC energy is delivered to the PBTES in one loop, while the Auxiliary Heater independently serves the process in a separate loop. | PTC, Charge TES HX, Aux Heater, Process HX |
+### 1.0 Complete Diagram (Indirect Parallel)
+Shows all possible components and connections.
+```mermaid
+graph LR
+    subgraph Primary Loop
+        Pump --> PTC[Parabolic Trough]
+        PTC --> SP{Splitter}
+        
+        %% Charging Branch
+        SP -->|Branch 1| CHX(Charge TES HX)
+        
+        %% Process Branch
+        SP -->|Branch 2| DHX(Discharge TES HX)
+        DHX --> AUX(Auxiliary Heater / Extra HX)
+        AUX --> PHX(Process HX)
+        
+        PHX --> MG{Merge}
+        CHX --> MG
+        MG --> Pump
+    end
+    
+    subgraph Secondary Loop (TES)
+        CHX -.->|Charge| TES[(Packed Bed)]
+        TES -.->|Discharge| DHX
+        DHX -.->|Cold Return| TES
+        TES -.->|Cold Return| CHX
+    end
+    
+    subgraph Process Loop
+        PHX ===>|Heat| ZP[[Zinc Pool]]
+    end
+```
 
----
-
-## 3. Diagrams per Operating Mode (Parallel / Indirect Baseline)
-
-Below are the fluid routing diagrams for each of the 6 operating modes, assuming the baseline Parallel/Indirect architecture.
-
-### Mode 1: Pure Charging
+### 1.1 Mode 1: Pure Charging
+Process is off or bypassed. All solar heat goes to the TES.
 ```mermaid
 graph LR
     subgraph Primary Loop
@@ -55,7 +58,8 @@ graph LR
     end
 ```
 
-### Mode 2: Solar to Process (TES Standby)
+### 1.2 Mode 2: Solar to Process (TES Standby)
+Solar irradiance matches process demand. TES is inactive.
 ```mermaid
 graph LR
     subgraph Primary Loop
@@ -68,7 +72,8 @@ graph LR
     end
 ```
 
-### Mode 3: TES Discharge
+### 1.3 Mode 3: TES Discharge
+Solar is off/insufficient. TES secondary loop discharges heat to the primary process branch.
 ```mermaid
 graph LR
     subgraph Primary Loop
@@ -85,7 +90,8 @@ graph LR
     end
 ```
 
-### Mode 4: Auxiliary Heater Only
+### 1.4 Mode 4: Auxiliary Heater Only
+Solar is off and TES is empty. Auxiliary Heater fires to meet 100% of demand.
 ```mermaid
 graph LR
     subgraph Primary Loop
@@ -98,28 +104,35 @@ graph LR
     end
 ```
 
-### Mode 5: High-Temperature Charging
-*Special series routing to ensure TES gets the hottest fluid.*
+### 1.5 Mode 5: High-Temperature Charging (Parallel)
+The extra HX (Aux Heater) is in parallel with the Charge HX. Flow from the PTC splits to charge the TES and serve the process simultaneously.
 ```mermaid
 graph LR
     subgraph Primary Loop
         Pump --> PTC[Parabolic Trough]
-        PTC --> CHX(Charge TES HX)
-        CHX --> AUX(Additional HX / Aux Heater)
+        PTC --> SP{Splitter}
+        
+        SP -->|Branch 1| CHX(Charge TES HX)
+        SP -->|Branch 2| AUX(Auxiliary Heater / Extra HX)
         AUX --> PHX(Process HX)
-        PHX --> Pump
+        
+        PHX --> MG{Merge}
+        CHX --> MG
+        MG --> Pump
     end
+    
     subgraph Secondary Loop (TES)
-        CHX -.->|High-T Charge| TES[(Packed Bed)]
+        CHX -.->|Charge| TES[(Packed Bed)]
         TES -.->|Cold Return| CHX
     end
+    
     subgraph Process Loop
         PHX ===>|Heat| ZP[[Zinc Pool]]
     end
 ```
 
-### Mode 6: Special Cold-Tank Charge
-*Two completely independent loops.*
+### 1.6 Mode 6: Special Cold-Tank Charge
+Used when the tank is too cold. All PTC energy is delivered to the TES, while the Auxiliary Heater independently serves the process in two completely isolated loops.
 ```mermaid
 graph LR
     subgraph Loop 1: Charging
@@ -144,21 +157,29 @@ graph LR
 
 ---
 
-## 4. The Direct Approach (2-Tank System)
+## 2. Direct Parallel Architecture
 
-In the Direct configuration, the intermediate heat exchangers (`Charge_TES_HX` and `Discharge_TES_HX`) are eliminated. The same primary Heat Transfer Fluid circulates through the solar field, the process, and the storage tanks. Storage is handled via a **2-Tank system** (a Hot Tank and a Cold Tank).
+In the Direct configuration, the intermediate heat exchangers are removed. The primary NaK fluid circulates directly through the storage, which is implemented as a 2-Tank system (Hot Tank and Cold Tank).
 
-### Direct Mode 5 (High-Temperature Charging Example)
+### 2.0 Complete Diagram (Direct Parallel)
 ```mermaid
 graph LR
-    subgraph Single Loop (NaK)
+    subgraph Primary Loop
         Pump --> PTC[Parabolic Trough]
+        PTC --> SP{Splitter}
         
-        PTC --> HT[(Hot Tank)]
-        HT -.-> CT[(Cold Tank)]
-        CT --> AUX(Additional HX / Aux Heater)
+        %% Charging Branch
+        SP -->|Branch 1| HT[(Hot Tank)]
+        HT -.->|Storage| CT[(Cold Tank)]
+        CT --> MG{Merge}
+        
+        %% Process Branch
+        SP -->|Branch 2| DHX_Pipe(Discharge Outlet from Hot Tank)
+        DHX_Pipe --> AUX(Auxiliary Heater / Extra HX)
         AUX --> PHX(Process HX)
-        PHX --> Pump
+        
+        PHX --> MG
+        MG --> Pump
     end
     
     subgraph Process Loop
@@ -166,16 +187,92 @@ graph LR
     end
 ```
 
-### Direct Mode 6 (Special Cold-Tank Charge Example)
+### 2.1 Mode 1: Pure Charging
+```mermaid
+graph LR
+    subgraph Primary Loop
+        Pump --> PTC[Parabolic Trough]
+        PTC --> HT[(Hot Tank)]
+        HT -.->|Storage| CT[(Cold Tank)]
+        CT --> Pump
+    end
+```
+
+### 2.2 Mode 2: Solar to Process (TES Standby)
+```mermaid
+graph LR
+    subgraph Primary Loop
+        Pump --> PTC[Parabolic Trough]
+        PTC --> PHX(Process HX)
+        PHX --> Pump
+    end
+    subgraph Process Loop
+        PHX ===>|Heat| ZP[[Zinc Pool]]
+    end
+```
+
+### 2.3 Mode 3: TES Discharge
+Fluid is drawn from the Hot Tank to serve the process, returning to the Cold Tank.
+```mermaid
+graph LR
+    subgraph Primary Loop
+        Pump --> HT[(Hot Tank)]
+        HT --> PHX(Process HX)
+        PHX --> CT[(Cold Tank)]
+        CT --> Pump
+    end
+    subgraph Process Loop
+        PHX ===>|Heat| ZP[[Zinc Pool]]
+    end
+```
+
+### 2.4 Mode 4: Auxiliary Heater Only
+```mermaid
+graph LR
+    subgraph Primary Loop
+        Pump --> AUX(Auxiliary Heater)
+        AUX --> PHX(Process HX)
+        PHX --> Pump
+    end
+    subgraph Process Loop
+        PHX ===>|Heat| ZP[[Zinc Pool]]
+    end
+```
+
+### 2.5 Mode 5: High-Temperature Charging (Parallel)
+The extra HX is in parallel with the 2-Tank charging inlet.
+```mermaid
+graph LR
+    subgraph Primary Loop
+        Pump --> PTC[Parabolic Trough]
+        PTC --> SP{Splitter}
+        
+        SP -->|Branch 1| HT[(Hot Tank)]
+        HT -.->|Storage| CT[(Cold Tank)]
+        CT --> MG{Merge}
+        
+        SP -->|Branch 2| AUX(Auxiliary Heater / Extra HX)
+        AUX --> PHX(Process HX)
+        PHX --> MG
+        
+        MG --> Pump
+    end
+    
+    subgraph Process Loop
+        PHX ===>|Heat| ZP[[Zinc Pool]]
+    end
+```
+
+### 2.6 Mode 6: Special Cold-Tank Charge
+Two independent loops: one for charging the tanks, one for the process.
 ```mermaid
 graph LR
     subgraph Loop 1: Charging
         Pump1 --> PTC[Parabolic Trough]
         PTC --> HT[(Hot Tank)]
-        HT -.-> CT[(Cold Tank)]
+        HT -.->|Storage| CT[(Cold Tank)]
         CT --> Pump1
     end
-    
     subgraph Loop 2: Processing
         Pump2 --> AUX(Auxiliary Heater)
         AUX --> PHX(Process HX)

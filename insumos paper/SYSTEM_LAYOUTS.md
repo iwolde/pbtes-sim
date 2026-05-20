@@ -146,15 +146,17 @@ graph LR
 
 ## 3. Operating Modes
 
-The quasi-steady simulation utilizes six distinct operating modes depending on the current Solar Irradiance (DNI) and the TES State of Charge (SoC).
+The quasi-steady simulation utilizes six distinct operating modes depending on the current Solar Irradiance (DNI) and the TES State of Charge (SoC). *Note: This corrects previous documentation that misaligned the mode numbers.*
 
-| Mode | Name | Solar | TES | Aux | Active Components |
-|------|------|-------|-----|-----|-------------------|
-| **1** | Solar charges TES | ✔️ | Charge | - | PTC, Charge TES HX |
-| **2** | Solar to process + TES standby | ✔️ | Standby | - | PTC, Process HX |
-| **3** | Solar + TES Co-Discharging | ✔️ | Discharge | - | PTC, Discharge TES HX, Process HX |
-| **4** | TES discharge to process | - | Discharge | - | Discharge TES HX, Process HX |
-| **5** | Auxiliary heater only | - | Standby | ✔️ | **Auxiliary Heater (Preheater)**, Process HX |
-| **6** | Solar charges TES + process | ✔️ | Charge | - | PTC, Charge TES HX, Process HX |
+| Mode | Name | Description |
+|------|------|-------------|
+| **1** | Pure Charging | **Solar charges TES.** Used when process demand is off or fully met, routing all solar heat to the TES. |
+| **2** | Solar to Process (TES Standby) | **Solar serves process only.** Solar irradiance matches process demand; TES is inactive. |
+| **3** | TES Discharge | **TES discharging.** Solar is insufficient/off. TES discharges heat to the process loop. |
+| **4** | Auxiliary Heater Only | **Auxiliary firing.** Solar is off and TES is depleted. The Auxiliary Heater provides 100% of process heat. |
+| **5** | High-Temperature Charging | **High-T Charging + Process.** A special series mode (even in Parallel plants). Fluid flows from PTC → Charge TES HX (highest temp) → Additional HX (Preheater/Aux) → Process HX. This charges the TES at a higher temperature than Mode 6. |
+| **6** | Normal Charging + Process | **Simultaneous operation.** Solar field serves the process first (or in parallel), and the remaining heat/flow is used to charge the TES. |
 
-*Note: In Mode 5, the high-temperature Auxiliary Heater (labeled `Preheater_HX` in the TESPy code) fires to guarantee the process heat demand is met when solar is unavailable and the TES is fully depleted.*
+### Note on Mode 5 vs Mode 6
+- In **Mode 6 (Series)**, the flow is `PTC → Process HX → Charge TES HX`. The process gets the hottest fluid, and the TES charges with the cooler return fluid.
+- In **Mode 5**, the flow is reversed: `PTC → Charge TES HX → Additional HX (Preheater) → Process HX`. The TES receives the hottest fluid directly from the PTC for high-temperature charging, and the process is served afterwards, utilizing the additional HX (Preheater) to top up the heat if necessary.

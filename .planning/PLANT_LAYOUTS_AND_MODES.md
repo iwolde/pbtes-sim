@@ -1,7 +1,7 @@
 # Plant Layouts, Configurations & Operating Modes
 
 *Complete technical reference for the PBTES solar thermal plant.*
-*Updated: 2026-05-20*
+*Updated: 2026-05-20 — v3.0: Redesigned direct configuration with 2-tank parallel discharge mixing*
 
 ---
 
@@ -18,6 +18,9 @@ Every configuration of the plant is assembled from the same set of components. N
 | **High-T Charge HX** | `Charge_TES_HX` (Mode 5) | HeatExchanger (indirect only) | Separate HX in parallel with Charge HX for high-temperature charging |
 | **Discharge HX** | `Discharge_TES_HX` | HeatExchanger (indirect only) | Couples TES secondary loop to process loop during discharging |
 | **Packed Bed TES** | `TES` | 1D Schumann model | Stores thermal energy in rock/ceramic pebbles |
+| **Hot Tank** | — | Storage tank (direct only) | Stores high-grade heat at PTC outlet temperature (~560°C); contains packed bed |
+| **Cold Tank** | — | Storage tank (direct only) | Stores lower-grade heat at process return temperature (~480°C); contains packed bed |
+| **Mixing Valve** | — | 3-way valve (direct only) | Blends Hot Tank and Cold Tank outlets during discharge to control process inlet temperature |
 | **Splitter** | `Splitter1` | Node | Splits flow into two branches (Parallel topology, Mode 1) |
 | **Merger** | `Merge2` | Node | Merges two branches back together (Parallel topology, Mode 1) |
 | **Zinc Pool** | `ZincPool` | Lumped-capacitance | Dynamic galvanizing bath model (always active, external to TESPy) |
@@ -43,13 +46,23 @@ The plant topology is defined by two independent choices, creating a 2×2 matrix
 
 **Parallel**: When both solar collection and TES charging happen simultaneously, the HTF flow is **split** at a Splitter node after the PTC. One branch goes to the process HX, the other to the TES charge HX. The branches rejoin at a Merge node before returning to the PTC. Modes 5 and 6 are exclusive to this topology.
 
-**Series**: The HTF flows through all components **sequentially** in a single loop. For charging (Mode 1), the flow goes: PTC → Preheater → Process HX → Charge HX → back to PTC. The TES receives the cooler return fluid after the process has extracted its heat.
+**Series**: The HTF flows through all components **sequentially** in a single loop. For charging (Mode 1) in indirect configs, the flow goes: PTC → Preheater → Process HX → Charge HX → back to PTC. The TES receives the cooler return fluid after the process has extracted its heat. In direct configs, the Hot Tank is placed **upstream** of the process (PTC → Hot Tank → Preheater → Process → Cold Tank → PTC) to capture the full PTC output temperature.
 
 ### 2.2 Tank Config: Indirect vs Direct
 
 **Indirect**: The TES has its **own secondary loop** with a separate fluid circuit. A heat exchanger (HeatExchanger component with two sides: hot=primary, cold=secondary) couples the primary HTF loop to the TES secondary loop. The secondary loop circulates HTF through the packed bed and back through the coupling HX. A **secondary pump** drives this loop when active.
 
-**Direct**: The primary HTF itself flows directly through the TES, which uses a **two-tank arrangement** (hot tank + cold tank), both with internal thermal stratification. During charging, HTF flows from the cold tank through the packed bed to the hot tank. During discharging, the flow reverses. There is no coupling HX and no secondary loop.
+**Direct**: The primary HTF flows directly through the packed bed — **no coupling heat exchangers** are needed, reducing capital cost. The system uses a **two-tank arrangement**, each containing a packed bed with internal thermal stratification:
+
+- **Hot Tank**: Stores high-grade thermal energy at the PTC outlet temperature (~560°C).
+- **Cold Tank**: Stores lower-grade thermal energy at the process return temperature (~480°C).
+
+During **charging**, the Hot Tank receives hot HTF from the PTC outlet (directly or via a splitter branch), while the Cold Tank receives the cooler process return (~480°C). Each tank charges independently at its respective temperature level.
+
+During **discharging**, both tanks release hot fluid from their tops **in parallel**. A **mixing valve** blends the two streams at a controlled mass flow ratio to achieve the target process inlet temperature (≥520°C). The process return (~480°C) is split back to both tank bottoms proportionally. This parallel-discharge strategy avoids putting the tanks in series (which would cause excessive pressure drop and uncontrollable outlet temperature) and provides active temperature regulation without heat exchangers.
+
+> [!IMPORTANT]
+> The key advantage of the 2-tank direct approach is that the PTC can operate at temperatures **significantly above** the process requirement (~560°C vs ~520°C). The Hot Tank captures this high-grade energy directly (no HX thermal penalty), while the Cold Tank captures the process return energy that would otherwise be wasted. During discharge, the mixing valve precisely controls the process inlet temperature using the available thermal gradient between the two tanks.
 
 > [!NOTE]
 > In TESPy, the direct configuration models the TES path using `SimpleHeatExchanger` components labeled as "pipes" (`Charge_TES_Pipe`, `Discharge_TES_Pipe`). These are **modeling references only** — they represent the temperature change as HTF passes through the packed bed. The actual physics is solved by the external 1D Schumann model.
@@ -59,9 +72,9 @@ The plant topology is defined by two independent choices, creating a 2×2 matrix
 | # | Topology | Tank Config | Description |
 |---|----------|-------------|-------------|
 | 1 | **Parallel** | **Indirect** | Baseline. Split flow + HX coupling to TES secondary loop |
-| 2 | **Parallel** | **Direct** | Split flow, 2-tank TES, HTF flows directly through packed bed |
+| 2 | **Parallel** | **Direct** | Split flow; Hot Tank on TES branch, Cold Tank on process return; parallel discharge with mixing |
 | 3 | **Series** | **Indirect** | Sequential flow + HX coupling to TES secondary loop |
-| 4 | **Series** | **Direct** | Sequential flow, 2-tank TES, HTF flows directly through packed bed |
+| 4 | **Series** | **Direct** | Sequential flow; Hot Tank upstream, Cold Tank downstream of process; parallel discharge with mixing |
 
 ---
 
@@ -86,11 +99,11 @@ The solver selects one of 6 operating modes each timestep based on irradiance (E
 
 **Mode 2 — Solar to Process Only**: Simple loop. PTC heats HTF, which delivers heat to the process. TES is in standby (no charging or discharging). Identical network for all configurations.
 
-**Mode 3 — TES Discharge to Process**: No solar input. Hot HTF from the TES top supplies heat to the process via the Discharge HX (indirect) or directly (direct). The PTC is completely offline.
+**Mode 3 — TES Discharge to Process**: No solar input. In indirect configs, hot HTF from the TES secondary loop heats the process via the Discharge HX. In direct configs, both tanks discharge **in parallel** through a mixing valve that controls the blended temperature to ≥520°C. The PTC is completely offline.
 
 **Mode 4 — Standby / Auxiliary**: No solar, TES exhausted. The Preheater HX acts as the auxiliary heater (gas-fired or electric), supplying all process heat. Minimal loop with only the process components.
 
-**Mode 5 — High-Temperature Solar Charging (Parallel only)**: Uses a dedicated **High-Temperature Charge HX** installed in parallel with the regular Charge HX. The PTC output first passes through the High-T HX (transferring heat to the TES secondary at the highest temperature), then continues to the Preheater and Process HX. In other modes, HTF bypasses the High-T HX through a parallel pipe. The Preheater acts as auxiliary to supplement process heat if needed.
+**Mode 5 — High-Temperature Solar Charging (Parallel only)**: In indirect configs, uses a dedicated **High-Temperature Charge HX** installed in parallel with the regular Charge HX. The PTC output first passes through the High-T HX (transferring heat to the TES secondary at the highest temperature), then continues to the Preheater and Process HX. In other modes, HTF bypasses the High-T HX through a parallel pipe. In direct configs, the PTC output flows directly into the **Hot Tank** (no HX needed), then continues to the Preheater and Process. The Preheater acts as auxiliary to supplement process heat if needed.
 
 **Mode 6 — Solar Charges TES + Process (Decoupled, Parallel only)**: Two completely independent cycles operate simultaneously. Cycle A: PTC → Charge HX → PTC (dedicated to TES charging). Cycle B: Preheater (auxiliary) → Process HX → Preheater (dedicated to process). Each cycle has its own pump.
 
@@ -155,33 +168,33 @@ graph TD
 
 ### 4.2 Parallel / Direct — Full Layout
 
-Same parallel split topology, but the HTF flows **directly through the packed bed** between two tanks (hot and cold). No coupling HX, no secondary loop. Only one pump needed for most modes.
+The primary loop splits after the PTC: one branch charges the **Hot Tank** at PTC outlet temperature (~560°C), the other serves the process and then charges the **Cold Tank** with the process return (~480°C). No coupling HX, no secondary loop. During discharge, both tanks feed a **mixing valve** in parallel.
 
 ```mermaid
 graph TD
-    subgraph "Primary Loop"
+    subgraph "Charging Path (Mode 1)"
         P1["⚙ Pump"] --> PTC["☀ PTC Field"]
         PTC --> SP["Splitter"]
-        SP -->|"Process branch"| PH["Preheater HX<br/>(Auxiliary)"]
+        SP -->|"TES branch<br/>~560°C"| HT["Hot Tank<br/>(charges at PTC temp)"]
+        HT --> MG["Merge"]
+        SP -->|"Process branch"| PH["Preheater HX<br/>Q=0"]
         PH -->|"T=520°C"| PR["Process HX<br/>Q=450 kW"]
-        PR -->|"T=480°C"| MG["Merge"]
-        SP -->|"TES branch"| CT["Cold Tank"] 
-        CT -->|"HTF flows through<br/>packed bed"| HT["Hot Tank"]
-        HT --> MG
+        PR -->|"T=480°C"| CT["Cold Tank<br/>(charges at return temp)"]
+        CT --> MG
         MG --> P1
     end
 
-    subgraph "Discharge Path"
-        HT2["Hot Tank"] -->|"HTF flows through<br/>packed bed"| CT2["Cold Tank"]
-        CT2 --> P1D["⚙ Pump"]
-        P1D --> PH2["Preheater HX"]
+    subgraph "Discharge Path (Mode 3)"
+        HT2["Hot Tank"] -->|"T_hot"| MV["Mixing Valve<br/>ṁ ratio control"]
+        CT2["Cold Tank"] -->|"T_cold"| MV
+        MV -->|"T_mix ≥ 520°C"| PH2["Preheater HX"]
         PH2 --> PR2["Process HX"]
-        PR2 --> HT2
+        PR2 -->|"T≈480°C return<br/>splits to both tanks"| P1D["⚙ Pump"]
     end
 ```
 
 > [!IMPORTANT]
-> In the 2-tank direct arrangement: during **charging**, HTF enters the cold tank bottom, flows up through the packed bed, and exits into the hot tank. During **discharging**, the flow reverses — HTF exits the hot tank top, flows down through the bed, and returns to the cold tank. Both tanks maintain internal thermal stratification.
+> During **charging**: the Hot Tank receives high-grade PTC output (~560°C) on the TES branch, while the Cold Tank receives the process return (~480°C) on the process branch. During **discharging**: both tanks discharge in parallel through a mixing valve. The process return (~480°C) splits proportionally back to both tank bottoms, pushing the thermoclines upward. The Preheater supplements only if T_mix < 520°C.
 
 ---
 
@@ -223,28 +236,30 @@ graph TD
 
 ### 4.4 Series / Direct — Full Layout
 
-Single series loop, HTF flows directly through the 2-tank packed bed.
+All components in a single series loop. The **Hot Tank** is placed **upstream** of the process (receiving PTC output at ~560°C), and the **Cold Tank** is placed **downstream** (receiving process return at ~480°C). During discharge, both tanks feed a mixing valve in parallel (same as Parallel/Direct).
 
 ```mermaid
 graph TD
-    subgraph "Primary Loop (Charge Path)"
+    subgraph "Charging Path (Mode 1)"
         P1["⚙ Pump"] --> PTC["☀ PTC Field"]
-        PTC --> PH["Preheater HX<br/>(Auxiliary)"]
+        PTC -->|"~560°C"| HT["Hot Tank<br/>(charges at PTC temp)"]
+        HT --> PH["Preheater HX<br/>Q=0"]
         PH -->|"T=520°C"| PR["Process HX<br/>Q=450 kW"]
-        PR -->|"T=480°C"| CT["Cold Tank"]
-        CT -->|"packed bed"| HT["Hot Tank"]
-        HT --> P1
+        PR -->|"T=480°C"| CT["Cold Tank<br/>(charges at return temp)"]
+        CT --> P1
     end
 
-    subgraph "Discharge Path"
-        HT2["Hot Tank"] -->|"packed bed"| CT2["Cold Tank"]
-        CT2 --> P1D["⚙ Pump"]
-        P1D --> PH2["Preheater HX"]
+    subgraph "Discharge Path (Mode 3)"
+        HT2["Hot Tank"] -->|"T_hot"| MV["Mixing Valve<br/>ṁ ratio control"]
+        CT2["Cold Tank"] -->|"T_cold"| MV
+        MV -->|"T_mix ≥ 520°C"| PH2["Preheater HX"]
         PH2 --> PR2["Process HX"]
-        PR2 --> HT2
+        PR2 -->|"T≈480°C return<br/>splits to both tanks"| P1D["⚙ Pump"]
     end
 ```
 
+> [!NOTE]
+> In Series/Direct charging, the Hot Tank is **upstream** of the process — it captures the full PTC output temperature. This is different from Series/Indirect where the TES is downstream of the process and only receives ~480°C fluid. This upstream placement is a key advantage of the 2-tank direct approach for the Series topology, as it enables the PTC to charge the Hot Tank at temperatures well above the process requirement.
 ---
 
 ## 5. Mode-by-Mode Diagrams
@@ -288,24 +303,27 @@ graph LR
 
 #### Mode 1 — Parallel / Direct
 
-Split flow; one branch goes to process, the other flows directly through the packed bed from cold to hot tank. Single pump.
+Split flow: one branch charges the **Hot Tank** at PTC outlet temperature (~560°C), the other serves the process and charges the **Cold Tank** with the process return (~480°C). Single pump.
 
 ```mermaid
 graph LR
     P1["⚙ Pump"] --> PTC["☀ PTC Field"]
     PTC --> SP["Splitter"]
+    SP -->|"TES charge<br/>~560°C"| HT["Hot Tank<br/>CHARGING"]
+    HT --> MG["Merge"]
     SP -->|"Process"| PH["Preheater HX<br/>Q=0"]
     PH -->|"T=520°C"| PR["Process HX<br/>Q=450 kW"]
-    PR -->|"T=480°C"| MG["Merge"]
-    SP -->|"TES charge"| CT["Cold Tank"]
-    CT -->|"packed bed"| HT["Hot Tank"]
-    HT --> MG
+    PR -->|"T=480°C"| CT["Cold Tank<br/>CHARGING"]
+    CT --> MG
     MG --> P1
 
     style PTC fill:#ff9,stroke:#c90
-    style CT fill:#69f,stroke:#36c
     style HT fill:#f96,stroke:#c30
+    style CT fill:#69f,stroke:#36c
 ```
+
+> [!TIP]
+> In Parallel/Direct Mode 1, the Hot Tank receives the **full PTC outlet temperature** (~560°C) on its branch, while the Cold Tank receives the **process return** (~480°C) on the other branch. Both tanks charge simultaneously at their respective temperature levels.
 
 #### Mode 1 — Series / Indirect
 
@@ -332,21 +350,24 @@ graph LR
 
 #### Mode 1 — Series / Direct
 
-HTF flows in series through everything including directly through the packed bed. Single pump.
+HTF flows in series: PTC → **Hot Tank** (charges at PTC temp) → Preheater → Process → **Cold Tank** (charges at process return temp). Single pump.
 
 ```mermaid
 graph LR
     P1["⚙ Pump"] --> PTC["☀ PTC Field"]
-    PTC --> PH["Preheater HX<br/>Q=0"]
+    PTC -->|"~560°C"| HT["Hot Tank<br/>CHARGING"]
+    HT --> PH["Preheater HX<br/>Q=0"]
     PH -->|"T=520°C"| PR["Process HX<br/>Q=450 kW"]
-    PR -->|"T=480°C"| CT["Cold Tank"]
-    CT -->|"packed bed"| HT["Hot Tank"]
-    HT --> P1
+    PR -->|"T=480°C"| CT["Cold Tank<br/>CHARGING"]
+    CT --> P1
 
     style PTC fill:#ff9,stroke:#c90
-    style CT fill:#69f,stroke:#36c
     style HT fill:#f96,stroke:#c30
+    style CT fill:#69f,stroke:#36c
 ```
+
+> [!NOTE]
+> Unlike Series/Indirect (where the TES is downstream of the process at ~480°C), Series/Direct places the **Hot Tank upstream** of the process to capture the full PTC output temperature. The Cold Tank downstream captures the process return. This means both tanks in Series/Direct charge at the **same temperature levels** as in Parallel/Direct.
 
 ---
 
@@ -400,19 +421,23 @@ graph LR
 
 #### Mode 3 — Direct (both Parallel and Series)
 
-HTF flows directly from the hot tank through the packed bed to the cold tank, then to the process. Single pump.
+Both tanks discharge **in parallel** through a **mixing valve** that controls the blended temperature to ≥520°C. The process return (~480°C) splits back to both tank bottoms. Single pump.
 
 ```mermaid
 graph LR
-    HT["Hot Tank"] -->|"packed bed"| CT["Cold Tank"]
-    CT --> P1["⚙ Pump"]
-    P1 --> PH["Preheater HX"]
-    PH -->|"T=520°C"| PR["Process HX<br/>Q=450 kW"]
-    PR -->|"T=480°C"| HT
+    HT["Hot Tank<br/>DISCHARGING"] -->|"T_hot"| MV["Mixing Valve<br/>ṁ ratio control"]
+    CT["Cold Tank<br/>DISCHARGING"] -->|"T_cold"| MV
+    MV -->|"T_mix ≥ 520°C"| PH["Preheater HX"]
+    PH --> PR["Process HX<br/>Q=450 kW"]
+    PR -->|"T≈480°C<br/>return splits to<br/>both tank bottoms"| P1["⚙ Pump"]
 
     style HT fill:#f96,stroke:#c30
     style CT fill:#69f,stroke:#36c
+    style MV fill:#cfc,stroke:#090
 ```
+
+> [!IMPORTANT]
+> The mixing valve mass flow ratio is: ṁ_hot / ṁ_cold = (T_target − T_cold) / (T_hot − T_target). When both tank outlets are above 520°C, the controller favors the Cold Tank to preserve Hot Tank energy. When the Cold Tank outlet drops below 520°C, more flow is drawn from the Hot Tank. The Preheater only activates as a last resort when the mixed temperature cannot reach 520°C.
 
 ---
 
@@ -467,24 +492,22 @@ graph LR
 
 #### Mode 5 — Parallel / Direct
 
-Single pump. PTC → packed bed (hot tank) → Preheater → Process → cold tank → PTC.
+Single pump. PTC output flows directly into the **Hot Tank** (no HX needed), then continues to Preheater and Process. The Cold Tank is bypassed in this mode.
 
 ```mermaid
 graph LR
     P1["⚙ Pump"] --> PTC["☀ PTC Field"]
-    PTC --> CT["Cold Tank"]
-    CT -->|"packed bed"| HT["Hot Tank"]
+    PTC -->|"~560°C"| HT["Hot Tank<br/>CHARGING<br/>(high-T)"]
     HT --> PH["Preheater HX"]
     PH -->|"T=520°C"| PR["Process HX<br/>Q=450 kW"]
     PR -->|"T=480°C"| P1
 
     style PTC fill:#ff9,stroke:#c90
-    style CT fill:#69f,stroke:#36c
     style HT fill:#f96,stroke:#c30
 ```
 
 > [!NOTE]
-> Mode 5 places the TES **upstream** of the process (PTC → TES → Process), unlike Mode 1 Series which places the TES **downstream** (PTC → Process → TES). This means Mode 5 charges the TES with the hottest fluid available, at the cost of the process receiving cooler HTF (supplemented by the Preheater/auxiliary if needed).
+> In direct Mode 5, the PTC output goes directly to the Hot Tank (no High-T Charge HX needed since there is no secondary loop). This is equivalent to Mode 1 Series/Direct without the Cold Tank. The Cold Tank is bypassed because Mode 5 focuses on high-temperature charging of the Hot Tank only.
 
 ---
 
@@ -527,28 +550,31 @@ graph LR
 
 #### Mode 6 — Parallel / Direct
 
-Two pumps (one per cycle). No secondary loop needed.
+Two pumps (one per cycle). Cycle A charges the **Hot Tank** with PTC output. Cycle B runs the process on auxiliary and charges the **Cold Tank** with the process return.
 
 ```mermaid
 graph LR
-    subgraph "Cycle A — Solar → TES Charging"
+    subgraph "Cycle A — Solar → Hot Tank Charging"
         P1A["⚙ Pump A"] --> PTC["☀ PTC Field"]
-        PTC --> CT["Cold Tank"]
-        CT -->|"packed bed"| HT["Hot Tank"]
+        PTC -->|"~560°C"| HT["Hot Tank<br/>CHARGING"]
         HT --> P1A
     end
 
-    subgraph "Cycle B — Process (Independent)"
+    subgraph "Cycle B — Process + Cold Tank Charging"
         P1B["⚙ Pump B"] --> PH["Preheater HX<br/>(Auxiliary)"]
         PH -->|"T=520°C"| PR["Process HX<br/>Q=450 kW"]
-        PR -->|"T=480°C"| P1B
+        PR -->|"T=480°C"| CT["Cold Tank<br/>CHARGING"]
+        CT --> P1B
     end
 
     style PTC fill:#ff9,stroke:#c90
-    style CT fill:#69f,stroke:#36c
     style HT fill:#f96,stroke:#c30
+    style CT fill:#69f,stroke:#36c
     style PH fill:#f66,stroke:#c00
 ```
+
+> [!TIP]
+> In direct Mode 6, both tanks charge simultaneously from separate thermal sources: the Hot Tank from the PTC (high-grade, ~560°C) and the Cold Tank from the process return (lower-grade, ~480°C). This maximizes energy capture into both tanks while keeping the cycles completely independent.
 
 > [!WARNING]
 > **Mode 6 Parallel design currently fails** in TESPy with "too many parameters: 13 required, 14 supplied". This is a known Phase C issue. At runtime, Mode 6 falls back to Mode 4 when this occurs.
@@ -589,6 +615,40 @@ sequenceDiagram
 - Hot fluid exits the **top**
 - Profile array is reversed for the Schumann model
 
+### Discharge Temperature Control (Direct Configuration Only)
+
+During discharge (Mode 3) in direct configurations, both tanks release hot fluid from their tops **in parallel**. A mixing valve blends the two streams to control the process inlet temperature.
+
+**Mixing equation:**
+
+```
+T_mix = (ṁ_hot × T_hot + ṁ_cold × T_cold) / (ṁ_hot + ṁ_cold)
+```
+
+where:
+- `T_hot` = Hot Tank outlet temperature (from top)
+- `T_cold` = Cold Tank outlet temperature (from top)
+- `ṁ_hot`, `ṁ_cold` = mass flow rates from each tank (controlled by the mixing valve)
+- `T_mix` ≥ 520°C (target process inlet temperature)
+
+**Required mass flow ratio** (to achieve target temperature):
+
+```
+ṁ_hot / ṁ_cold = (T_target − T_cold) / (T_hot − T_target)
+```
+
+**Control logic:**
+
+| Condition | Strategy |
+|-----------|----------|
+| T_hot ≥ 520°C and T_cold ≥ 520°C | Mix both; favor Cold Tank to preserve Hot Tank energy |
+| T_hot ≥ 520°C but T_cold < 520°C | Increase ṁ_hot / ṁ_cold ratio to reach T_mix = 520°C |
+| T_hot < 520°C | Preheater supplements; both tanks still discharge to reduce auxiliary load |
+| Both tanks depleted (SoC ≈ 0) | Switch to Mode 4 (auxiliary only) |
+
+> [!TIP]
+> The 2-tank mixing strategy **extends the useful discharge period**. Even when one tank's thermocline degrades and its outlet drops below T_target, blending with the other tank's output maintains the target temperature longer than a single-tank system could. The Preheater only activates as a last resort when neither tank alone can sustain T_target.
+
 ---
 
 ## 7. Summary Matrix: Which Components are Active per Mode
@@ -598,16 +658,20 @@ sequenceDiagram
 | PTC Field | ✓ | ✓ | — | — | ✓ | ✓ |
 | Preheater HX | Q=0 | Q=0 | ✓ | ✓ (aux) | ✓ | ✓ (aux) |
 | Process HX | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| Charge HX | ✓ | — | — | — | — | ✓ |
-| High-T Charge HX | — | — | — | — | ✓ | — |
-| Discharge HX | — | — | ✓ | — | — | — |
+| Charge HX† | ✓ | — | — | — | — | ✓ |
+| High-T Charge HX† | — | — | — | — | ✓ | — |
+| Discharge HX† | — | — | ✓ | — | — | — |
+| Hot Tank‡ | charge | — | discharge | — | charge | charge |
+| Cold Tank‡ | charge | — | discharge | — | — | charge |
+| Mixing Valve‡ | — | — | ✓ | — | — | — |
 | Splitter / Merge | ✓* | — | — | — | — | — |
 | PBTES | charge | — | discharge | — | charge | charge |
 | Pump 1 (primary) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ (×2) |
-| Pump 2 (secondary) | ✓† | — | ✓† | — | ✓† | ✓† |
+| Pump 2 (secondary)† | ✓ | — | ✓ | — | ✓ | ✓ |
 
 *Splitter/Merge only in Parallel Mode 1.
-†Pump 2 only in Indirect configurations.
+†Indirect configurations only.
+‡Direct configurations only.
 
 ---
 

@@ -130,7 +130,9 @@ def run_single_simulation(
 
     # Initialize TESPy modes
     print("\nInitializing cycle design states...")
+    init_temp = tes_params['Initial temperature']  # save before mutation
     solver.initialize_modes()
+    solver.tes_params['Initial temperature'] = init_temp  # restore
 
     # Run quasi-steady simulation
     print(f"\nRunning {days}-day simulation...")
@@ -154,6 +156,7 @@ def run_single_simulation(
     required_cols = [
         'time', 'E', 'Tamb', 'TESmode', 'TES_layout', 'iter_status',
         'T_ptc_out', 'T_tes_top', 'T_tes_bottom', 'tes_soc_kWh', 'mdot_ptc_kg_s',
+        'mdot_tes_charge_kg_s', 'mdot_tes_discharge_kg_s', 'mdot_process_kg_s',
         'to_tes_kJ', 'tes_to_proc_kJ', 'solar_to_proc_kJ', 'aux_to_proc_kJ',
         'T_zinc', 'Q_zinc_hx_kW', 'zinc_operating'
     ]

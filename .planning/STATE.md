@@ -42,7 +42,7 @@ and Mode 6 design initialization. Do NOT change the script structure or results 
 
 ## Recent Updates
 
+- Post-processing script created: `scripts/run_postprocess.py` and `pbtes/analysis/postprocess.py` implemented to calculate pumping power via the Ergun equation and append `dP_tes_bar` and `W_pump_kW` to the CSVs.
 - Phase B committed: `6a5ca7e` — mode1_kA.txt removed, run_simulation.py + run_parametric.py created (2026-05-20)
-- Phase A committed: `e6d494f` — AGENTS.md rewrite, cleanup, dict key fixes (2026-05-19)
 - Modularization committed: `39254b3` — pbtes/ package created (prior)
 

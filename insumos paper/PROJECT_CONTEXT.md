@@ -391,6 +391,7 @@ git push origin main
 | Modularization (coreV5 → pbtes/ package) | ✅ Done | `39254b3` |
 | A: Foundation & AGENTS.md | ✅ Done | `e6d494f` |
 | B: Bug fixes + script consolidation | ✅ Done | `ccd3e72` merged `be419ad` |
+| Post-processing: Pump power (Ergun) | ✅ Done | `pending` |
 
 ### What is next: Phase C — Physics & Convergence
 **Branch to create**: `fix/convergence`

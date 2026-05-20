@@ -403,7 +403,7 @@ class Solver:
                 except AttributeError:
                     pass
     
-                warm_start = (mode == 'offdesign' and TESmode in ['1'])
+                warm_start = (mode == 'offdesign' and TESmode in ['1', '2'])
                 system.solve_network(mode=mode, design_path=design_path, TESmode=TESmode,
                                      use_init_path=warm_start)
                 conv = bool(getattr(system.network, 'converged', False))

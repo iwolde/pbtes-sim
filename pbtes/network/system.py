@@ -321,7 +321,7 @@ class SolarThermalSystem:
             TES_bot = self.tes.profile[-1]
             
             if getattr(self, 'tank_config', 'indirect') == 'indirect':
-                    self.conn_14.set_attr(T=TES_bot + 20)
+                self.conn_14.set_attr(T=TES_bot + 40)  # 40K offset for CHX ttd_l=20 to have working DT
             
             self.preheater_hx.set_attr(Q=0)
             
@@ -341,8 +341,14 @@ class SolarThermalSystem:
                     c_2=self.component_params.get('ptc_c_2', 0),
                     iam_1=self.component_params.get('ptc_iam_1', 0),
                     iam_2=self.component_params.get('ptc_iam_2', 0))
-                if hasattr(self, 'charge_tes_hx') and hasattr(self, 'charge_hx_kA') and self.charge_hx_kA:
-                    self.charge_tes_hx.set_attr(kA=self.charge_hx_kA)
+                if hasattr(self, 'charge_tes_hx'):
+                    if not hasattr(self, 'charge_hx_kA') or not self.charge_hx_kA:
+                        try:
+                            with open('mode1_kA.txt', 'r') as f:
+                                self.charge_hx_kA = float(f.read())
+                        except: pass
+                    if hasattr(self, 'charge_hx_kA') and self.charge_hx_kA:
+                        self.charge_tes_hx.set_attr(kA=self.charge_hx_kA)
                 if getattr(self, 'topology', 'Parallel') == 'Series':
                     self.process_hx.set_attr(Q=None)
                     if hasattr(self, 'ptc_field_A_designed'):
@@ -362,8 +368,9 @@ class SolarThermalSystem:
                     c_2=self.component_params['ptc_c_2'], E=self.component_params['ptc_E'],
                     iam_1=self.component_params['ptc_iam_1'], iam_2=self.component_params['ptc_iam_2'])
             else:
+                A_guess = abs(self.component_params.get('PR_Q', 450000)) / (max(current_irr, 100) * self.component_params['eta_opt'])
                 self.ptc_field.set_attr(
-                    E=current_irr, A='var',
+                    E=current_irr, A=A_guess,
                     eta_opt=self.component_params['eta_opt'],
                     aoi=self.component_params.get('ptc_aoi', 0),
                     doc=self.component_params.get('ptc_doc', 1),
@@ -436,7 +443,7 @@ class SolarThermalSystem:
             
             if is_m6par:
                 if getattr(self, 'tank_config', 'indirect') == 'indirect':
-                    self.conn_14.set_attr(T=TES_bot + 20)
+                    self.conn_14.set_attr(T=TES_bot + 40)
                 self.conn_02.set_attr(T=self.conexion_params['5_T'])
                 if mode == 'design':
                     self.ptc_field.set_attr(

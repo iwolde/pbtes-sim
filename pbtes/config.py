@@ -312,6 +312,12 @@ class EconomicsConfig:
     htf_cost_per_kg: float = 2.0      # USD/kg
     opex_fraction: float = 0.02       # 2% of CAPEX per year
     htf_density_for_mass: float = 1900.0  # kg/m³ (for HTF mass from tank volume)
+    
+    # ── Operational Cost Assumptions ───────────────────────────────────
+    electricity_price_per_kwh: float = 0.10  # USD/kWh
+    aux_fuel_price_per_kwh: float = 0.05     # USD/kWh (equivalent thermal)
+    om_rate_fraction: float = 0.02           # 2% of total equipment CAPEX per year for O&M
+
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -505,20 +511,20 @@ def zinc_pool_config():
 # ═══════════════════════════════════════════════════════════════════════
 
 MODE_TABLE = {
-    '1': 'Solar charges TES only  (PTC → TES → back to PTC)',
-    '2': 'Solar + TES discharge to process (both serve process)',
-    '3': 'TES discharges to process only (standby/no sun)',
-    '4': 'Standby — no flow, no heat transfer',
-    '5': 'Aux heater serves process only (overcast, TES cold)',
-    '6': 'Solar charges TES + serves process simultaneously',
+    '1': 'Solar charges TES + serves process',
+    '2': 'Solar to process only (TES standby)',
+    '3': 'TES discharge to process only (no sun)',
+    '4': 'Standby — auxiliary heater serves process',
+    '5': 'High-T solar charges TES + serves process (Parallel only)',
+    '6': 'Solar charges TES + process decoupled (Parallel only)',
 }
 
 # For each mode: whether PTC runs, TES charges, TES discharges, Aux runs
 MODE_INTERACTIONS = {
     '1': {'PTC': True,  'TES_charge': True,  'TES_discharge': False, 'Aux': False},
-    '2': {'PTC': True,  'TES_charge': False, 'TES_discharge': True,  'Aux': False},
+    '2': {'PTC': True,  'TES_charge': False, 'TES_discharge': False, 'Aux': False},
     '3': {'PTC': False, 'TES_charge': False, 'TES_discharge': True,  'Aux': False},
-    '4': {'PTC': False, 'TES_charge': False, 'TES_discharge': False, 'Aux': False},
-    '5': {'PTC': False, 'TES_charge': False, 'TES_discharge': False, 'Aux': True},
-    '6': {'PTC': True,  'TES_charge': True,  'TES_discharge': False, 'Aux': False},
+    '4': {'PTC': False, 'TES_charge': False, 'TES_discharge': False, 'Aux': True},
+    '5': {'PTC': True,  'TES_charge': True,  'TES_discharge': False, 'Aux': True},
+    '6': {'PTC': True,  'TES_charge': True,  'TES_discharge': False, 'Aux': True},
 }

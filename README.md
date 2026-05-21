@@ -67,7 +67,19 @@ All parameters are centralized in `pbtes/config.py`. Use `baseline_config()` for
 
 ## Key Decisions
 
-- **HTF**: NaK (INCOMP::NaK via CoolProp)
-- **Zinc pool**: Always enabled (dynamic galvanizing demand)
+- **HTF**: NaK (INCOMP::NaK via CoolProp) — primary; Air — comparison
+- **Zinc pool**: Always enabled for production (dynamic galvanizing demand); fixed-demand mode available for testing
 - **Pump power**: Post-processed from quasi-steady results (Ergun equation)
 - **PBTES model**: Validated from prior publication
+- **Topologies**: 2x2 matrix — Parallel/Series x Direct/Indirect
+- **Operating modes**: 6 modes (see `.planning/PLANT_LAYOUTS_AND_MODES.md` for the authoritative reference)
+
+## Documentation
+
+| Document | Purpose |
+|----------|---------|
+| `AGENTS.md` | Agent workflow rules, conventions, operating modes reference |
+| `TODO.md` | Current task list — what needs to be done |
+| `.planning/PLANT_LAYOUTS_AND_MODES.md` | Ground truth for operating modes and plant layouts |
+| `insumos paper/PROJECT_CONTEXT.md` | Full project reference (parameters, results format) |
+| `insumos paper/zinc_pool_model_methodology.md` | Zinc pool physics and coupling |

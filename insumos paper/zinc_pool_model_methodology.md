@@ -176,14 +176,14 @@ bath: with a typical heat capacity of \(\sim 70\)–\(100\) MJ·K⁻¹, the
 temperature changes by at most a few Kelvin per hour, making the decoupling
 error negligible.
 
-### 4.4 Legacy Mode
+### 4.4 Fixed-Demand Mode (Legacy)
 
 When the zinc pool model is disabled (i.e., `zinc_pool_params = None`), the
-simulation reverts to the original fixed-demand behaviour: the process HX
-operates with a constant heat duty \(\dot{Q}_{hx}^{\text{des}}\) and a fixed
-outlet temperature \(T_{h,out}^{\text{des}}\), as in the baseline version of
-the model. This ensures full backward compatibility and allows direct comparison
-between constant-demand and dynamic-demand simulations.
+simulation reverts to a constant-demand behaviour: the process HX operates with
+a fixed heat duty \(\dot{Q}_{hx}^{\text{des}}\) and a fixed outlet temperature
+\(T_{h,out}^{\text{des}}\). This mode is retained for backward compatibility,
+testing, and comparison with constant-demand baselines. All production
+simulations use the dynamic zinc pool model (always ON).
 
 
 ## 5. Model Parameters

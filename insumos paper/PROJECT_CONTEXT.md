@@ -1,6 +1,6 @@
 # PBTES Simulation Project — Complete Context
 *Single authoritative reference for humans and AI agents.*
-*Updated: 2026-05-20 | Branch: `main` | GitHub: `iwolde/pbtes-sim`*
+*Updated: 2026-05-21 | HTF: NaK + Air | Zinc pool: dynamic (always ON)*
 
 ---
 
@@ -38,7 +38,7 @@ solar multiple and TES volume, with full economic analysis (LCOH).
 
 ### 2.2 Heat Transfer Fluid (HTF)
 - **Primary**: NaK (`INCOMP::NaK` in CoolProp) — sodium-potassium alloy
-- **Comparison**: Air (different agent task)
+- **Comparison**: Air — used in parametric sweeps for low-cost reference
 - Operating range: 300–600°C, nominal pressure ~5 bar
 
 ### 2.3 Packed Bed TES (PBTES)
@@ -68,16 +68,19 @@ All four must be simulated for the paper. Baseline is Parallel/indirect.
 
 ## 3. Operating Modes
 
-The solver selects one of 6 modes at each timestep based on irradiance, SoC, and temperatures:
+The solver selects one of 6 operating modes each timestep based on irradiance, SoC, and temperatures.
+See `.planning/PLANT_LAYOUTS_AND_MODES.md` for the authoritative reference with full diagrams.
 
-| Mode | Solar | TES | Auxiliary | When used |
-|------|-------|-----|-----------|-----------|
-| 1 | PTC charges TES | Charging | — | E > E_min_charge, SoC < 0.99 |
-| 2 | PTC → process direct | Standby | — | E > E_min_process, SoC too high |
-| 3 | PTC → process + TES discharge | Discharging | — | Low E, SoC > 0.10 |
-| 4 | TES discharge → process | Discharging | — | No sun, SoC > 0.05 |
-| 5 | Auxiliary heater → process | Standby | ✓ | No sun, SoC exhausted |
-| 6 | PTC → process + TES charging | Charge+process | — | Special: SoC low + cold TES |
+| Mode | Name | Solar | TES Action | Aux | Topology | When Selected |
+|------|------|:-----:|:----------:|:---:|:--------:|---------------|
+| **1** | Solar charges TES + process | ✓ | Charge ← | — | Both | E > E_charge, SoC < 0.99, T_ptc > T_tes_top |
+| **2** | Solar to process only | ✓ | Standby | — | Both | E > E_process, TES full or charge not viable |
+| **3** | TES discharge to process | — | Discharge → | — | Both | E < E_process, SoC > 0.10, T_top in 500–580°C |
+| **4** | Standby (auxiliary only) | — | Standby | ✓ | Both | No sun, SoC < 0.05 (exhausted) |
+| **5** | High-T solar charges TES | ✓ | Charge ← | ✓ | **Parallel only** | E > E_charge, T_top > 520°C, SoC < 0.90 |
+| **6** | Solar charges TES + process (decoupled) | ✓ | Charge ← | ✓* | **Parallel only** | E > E_process, SoC < 0.40, T_top < 470°C |
+
+\*Mode 6: process runs on an independent auxiliary-heated cycle while PTC charges TES.
 
 **Mode selection thresholds** (from `config.py`):
 - E_min_process = Q_proc / (A_ptc × η_opt) → ~49 W/m² at baseline
@@ -145,18 +148,20 @@ codigos/
 │   │   └── plots.py              ← Reporting (plots, CSV I/O)
 │   └── analysis/
 │       ├── economics.py          ← LCOH calculator
+│       ├── exergoeconomics.py    ← Exergoeconomic analysis
 │       ├── postprocess.py        ← Pump power, net solar fraction
-│       ├── convergence.py        ← Error rate tables, anomaly detection
+│       ├── convergence.py        ← [TODO] Error rate tables, anomaly detection
 │       └── results_reader.py     ← load_results() — reads CSV + meta header
 │
 ├── scripts/                      ← Post-processing pipeline
 │   ├── run_postprocess.py        ← Pump power + LCOH from results CSV
+│   ├── run_exergoeconomics.py    ← Exergoeconomic post-processing
 │   ├── run_assessment_05_analysis.py
 │   ├── run_assessment_06_figures.py
 │   ├── run_assessment_07_synthesis.py
 │   └── run_transition_matrix.py
 │
-├── tests/                        ← pytest suite (84 tests)
+├── tests/                        ← pytest suite (10 test files)
 │   ├── conftest.py               ← Shared fixtures + cache-clearing
 │   ├── test_physics.py
 │   ├── test_modes.py
@@ -164,7 +169,9 @@ codigos/
 │   ├── test_topology.py
 │   ├── test_offdesign.py         ← KNOWN FAIL — Mode 1 convergence
 │   ├── test_transitions.py
-│   └── test_zinc_pool.py
+│   ├── test_zinc_pool.py
+│   ├── test_economics.py
+│   └── test_exergoeconomics.py
 │
 ├── .planning/                    ← Project management
 │   ├── STATE.md                  ← Current phase and status (read before starting)
@@ -347,8 +354,8 @@ python -m pytest tests/ --ignore=tests/test_offdesign.py --tb=short -q
 python -m pytest tests/test_zinc_pool.py -v
 ```
 
-### Current test status (2026-05-20)
-- **83 passed, 1 xpassed** (offdesign excluded)
+### Current test status (2026-05-21)
+- **10 test files** covering physics, modes, networks, topology, offdesign, transitions, zinc pool, economics, exergoeconomics
 - `test_offdesign.py::test_mode1_offdesign` — **KNOWN FAIL** (physics, not code)
 - `test_transitions.py::test_mass_flow_routing_mode1` — **xfail** (same physics issue)
 - `conftest.py` automatically clears `.tespy_cache` before each session (prevents cache poisoning)
@@ -385,42 +392,27 @@ git push origin main
 ## 11. Project State & Phases
 
 ### What is complete
-| Phase | Status | Key commit |
-|-------|--------|------------|
-| 0: Cleanup (remove 40+ dead files) | ✅ Done | `8ac05bf` |
-| Modularization (coreV5 → pbtes/ package) | ✅ Done | `39254b3` |
-| A: Foundation & AGENTS.md | ✅ Done | `e6d494f` |
-| B: Bug fixes + script consolidation | ✅ Done | `ccd3e72` merged `be419ad` |
-| Post-processing: Pump power (Ergun) | ✅ Done | `pending` |
 
-### What is next: Phase C — Physics & Convergence
-**Branch to create**: `fix/convergence`
+| Phase | Description | Status |
+|-------|-------------|--------|
+| A: Foundation | Codebase cleanup, AGENTS.md, planning documents | Done |
+| B: Bug Fixes | Critical bug fixes, unified run_simulation.py | Done |
 
-**Known issues to fix** (in priority order):
+### Current: Phase C — Physics & Convergence
 
-#### Issue 1: Mode 1 offdesign diverges for NaK
-- **Symptom**: TESPy mass flow hits sentinel `-1e12 kg/s`, solver aborts
-- **Location**: `pbtes/simulation/solver.py` → `attempt_to_solve()`, `pbtes/network/system.py` → Mode 1 offdesign setup
-- **Root cause**: NaK fluid properties pushed out of valid range during offdesign iteration
-- **Fix approach**: Better initial guesses, tighter bounds, staged initialization
+**Known issues** (see `TODO.md` for full list):
+1. Mode 1 offdesign diverges for NaK
+2. Mode 6 design fails with "too many parameters"
+3. Full-year simulation convergence < 95%
 
-#### Issue 2: Mode 6 design fails with "too many parameters"
-- **Symptom**: `ValueError: You have provided too many parameters: 13 required, 14 supplied`
-- **Location**: `pbtes/network/system.py` → `setup_network()` for `TESmode='6'`
-- **Root cause**: One parameter is over-specified in the Mode 6 network setup
-- **Fix approach**: Remove the redundant parameter (likely a connection T or Q that conflicts)
+### Future: Phase D — Results & Publication
 
-#### Issue 3: Full-year simulation convergence < 95%
-- **Target**: ≥ 95% of timesteps converge (Phase C success criterion)
-- **Tools**: `pbtes/analysis/convergence.py` has error rate analysis
-
-### After Phase C: Phase D — Results & Publication
 - Run all 4 topologies × 365 days
 - Run HTF comparison (NaK vs Air)
 - Run parametric sweeps (aperture + TES volume)
-- Generate 13+ figures using `scripts/run_assessment_06_figures.py`
-- Compute LCOH using `pbtes/analysis/economics.py`
-- Write paper sections
+- Generate 14+ figures
+- Compute LCOH and exergoeconomic analysis
+- Write paper
 
 ---
 
@@ -442,20 +434,22 @@ git push origin main
 | `pbtes/storage/zinc_pool.py` | Independent |
 | `pbtes/reporting/plots.py` | Figures agent |
 | `pbtes/analysis/economics.py` | Economics agent |
+| `pbtes/analysis/exergoeconomics.py` | Exergoeconomics agent |
+| `pbtes/analysis/convergence.py` | [TODO — create first] |
 | `run_simulation.py` | Independent |
 | `run_parametric.py` | Independent |
 
 ### Scope discipline
 - **Convergence agent**: touch ONLY `system.py` and `solver.py` — do not touch scripts, results format, or physics of packed bed
 - **Figures agent**: touch ONLY `plots.py` and `scripts/run_assessment_06_figures.py`
-- **If in doubt**: read AGENTS.md section 7 (Parallel Agent Rules)
+- **If in doubt**: read AGENTS.md section 7 (Agent Rules)
 
 ### When done
-1. Run tests → 83+ pass
+1. Run tests
 2. Commit atomically with descriptive message
-3. Update `.planning/STATE.md`
-4. Merge to main and push
-5. Write a brief handoff note documenting what changed and what remains
+3. Update `TODO.md` and `.planning/STATE.md`
+4. Update `AGENTS.md` if structure/conventions changed
+5. Merge to main and push
 
 ---
 
@@ -464,6 +458,7 @@ git push origin main
 | Decision | Choice | Rationale |
 |----------|--------|-----------|
 | HTF | NaK (`INCOMP::NaK`) primary | Available in CoolProp, appropriate temperature range |
+| HTF comparison | Air | Low-cost reference for parametric comparison |
 | Zinc pool | Always ON | Core novelty of the paper |
 | Pump power | Post-processed (Ergun) | Not inline — avoids convergence complications |
 | PBTES model | Pre-validated | From prior publication, no re-validation needed |

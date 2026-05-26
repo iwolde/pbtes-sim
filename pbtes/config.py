@@ -71,7 +71,7 @@ class TESConfig:
 class PTCConfig:
     """Solar field design-point parameters (sent to TESPy PTC component)."""
 
-    aperture_area: float = 1000.0     # m²   — total aperture area
+    aperture_area: float = 1500.0     # m²   — total aperture area
     optical_efficiency: float = 0.816  # —   — η_opt (clean mirrors)
     aoi: float = 20.0                 # °    — angle of incidence at design
     doc: float = 1.0                  # —   — direct-on-collector flag
@@ -150,7 +150,7 @@ class HTFConfig:
 
     # ── Temperature limits ─────────────────────────────────────────────
     T_min: float = 300.0              # °C — minimum valid temp (CoolProp / physics)
-    T_max: float = 600.0              # °C — maximum valid temp (NaK safe limit)
+    T_max: float = 700.0              # °C — maximum valid temp (NaK safe limit)
     T_min_clamp: float = 300.1        # °C — numerical clamp in packed_bed
 
     # ── Allowed alternative fluids ─────────────────────────────────────

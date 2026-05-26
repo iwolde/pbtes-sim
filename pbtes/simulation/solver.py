@@ -43,9 +43,14 @@ class Solver:
         A_ptc   = self.component_params.get('ptc_A', 10000)
         eta_opt = self.component_params.get('eta_opt', 0.75)
         Q_proc  = abs(self.component_params.get('PR_Q', 1e6))
-        self.E_min_process = Q_proc / (A_ptc * eta_opt)  # W/m2
+        E_design = self.component_params.get('ptc_E', 900)
+        self.E_min_process = Q_proc / (A_ptc * eta_opt)  # W/m2 — minimum to serve process
         self.E_min_charge  = self.E_min_process * charge_margin
         self.charge_margin = charge_margin
+        # Mode 1 fires when solar can serve process AND charge TES with meaningful surplus.
+        # Needs ~10% margin above E_min_charge for reliable offdesign convergence
+        # (LMTD singularity at low heat loads). Also floor at 600 W/m2 for kA stability.
+        self.E_min_mode1   = max(self.E_min_charge * 1.1, 600.0)
         # ---
         
         # --- Zinc pool (optional dynamic process model) ---
@@ -53,9 +58,10 @@ class Solver:
         # ---
 
         print(f'Control thresholds: E_min_process={self.E_min_process:.0f} W/m2, '
-              f'E_min_charge={self.E_min_charge:.0f} W/m2 '
-              f'(A_ptc={A_ptc} m2, eta_opt={eta_opt}, Q_proc={Q_proc/1e6:.1f} MW, '
-              f'margin={charge_margin}x)')
+              f'E_min_charge={self.E_min_charge:.0f} W/m2, '
+              f'E_min_mode1={self.E_min_mode1:.0f} W/m2 '
+              f'(A_ptc={A_ptc} m2, eta_opt={eta_opt}, Q_proc={Q_proc/1e6:.3f} MW, '
+              f'E_design={E_design} W/m2, margin={charge_margin}x)')
 
     def load_data(self, csv, start_date, days_to_simulate):
         """
@@ -147,10 +153,19 @@ class Solver:
             # Mode 5: high-T charge when tank is warm and irradiance is sufficient
             if TES_top > t_ph_out and soc_norm < 0.90:
                 return '5'
+            # Mode 1: charge TES + serve process — only when irradiance is high enough
+            # for the charge HX to operate well above its design minimum (avoids kA
+            # ill-conditioning when the available surplus heat is too small).
             charge_viable = True
             if T_ptc_out is not None:
                 charge_viable = (T_ptc_out > TES_top)
-            if charge_viable and soc_norm < 0.99:
+            # Add thermodynamic check for indirect charging temperature difference
+            if self.tank_config == 'indirect':
+                TES_bot = TES_profile[-1] if prev_TES_lay == 'Charge' else TES_profile[0]
+                # Thermodynamic limit: cold outlet (TES_bot + 40) must be lower than hot inlet (500°C) minus pinch (20K)
+                if TES_bot > 440.0:
+                    charge_viable = False
+            if irr >= self.E_min_mode1 and charge_viable and soc_norm < 0.99:
                 return '1'
             else:
                 return '2'
@@ -226,22 +241,39 @@ class Solver:
         sys1 = _make_system(450)  # Design at warmer T_bot for better offdesign CHX DT
         self.solar_system = sys1
         self.solve_network_steady(TESmode='1')
-        # Store kA in-memory for cross-mode use (Modes 5, 6 share the same HX)
+        # Store kA for cross-mode use and design TES charge flow for offdesign constraints
         self.charge_hx_kA = getattr(sys1, 'charge_hx_kA', None)
+        # Read design-point TES charge mass flow (used in offdesign to constrain conn_13.m)
+        try:
+            self.charge_tes_m_design = sys1.conn_13.m.val
+        except Exception:
+            self.charge_tes_m_design = None
+        ka_str = f"{self.charge_hx_kA:.1f}" if self.charge_hx_kA is not None else "None"
+        m_str = f"{self.charge_tes_m_design:.2f}" if self.charge_tes_m_design is not None else "None"
+        print(f'[Mode 1 design] kA={ka_str}, m_TES={m_str} kg/s')
         
         # ---- Mode 2 (process only) ----
         self.irr = 1000
         self.solar_system = _make_system(520)
         self.solve_network_steady(TESmode='2')
         
-        # ---- Mode 3 (discharge, direct) ----
+        # ---- Mode 3 (discharge) ----
         self.irr = 0
         sys3 = _make_system(540)
+        # Set design TES discharge flow (same order of magnitude as charge)
+        if self.charge_tes_m_design is not None:
+            sys3.tes_charge_m = self.charge_tes_m_design
         sys3.set_operation_mode(TESmode='3', current_irr=0,
-            profile=sys3.tes.profile, prev_TES_lay='Discharge', mode='design')
-        if hasattr(sys3, 'conn_15'): sys3.conn_15.set_attr(T=540)
+            profile=sys3.tes.profile, prev_TES_lay='Charge', mode='design')
+        # conn_15.T is set inside set_operation_mode from TES profile, but override for robustness
+        if hasattr(sys3, 'conn_15'):
+            sys3.conn_15.set_attr(T=540)
         sys3.solve_network(mode='design', TESmode='3')
         self.solar_system = sys3
+        try:
+            self.discharge_tes_m_design = sys3.conn_15.m.val
+        except Exception:
+            self.discharge_tes_m_design = self.charge_tes_m_design
         
         # ---- Mode 4 (standby) ----
         self.irr = 0
@@ -249,20 +281,21 @@ class Solver:
         self.solve_network_steady(TESmode='4')
         
         # ---- Mode 5 (high-T charge, retry for convergence) ----
-        self.irr = 1000
+        self.irr = 900
         sys5 = _make_system(400)
-        if self.charge_hx_kA:
-            sys5.charge_hx_kA = self.charge_hx_kA  # Use Mode 1's kA
-        sys5.set_operation_mode(TESmode='5', current_irr=1000,
+        if self.charge_tes_m_design is not None:
+            sys5.tes_charge_m = self.charge_tes_m_design
+        sys5.set_operation_mode(TESmode='5', current_irr=900,
             profile=sys5.tes.profile, prev_TES_lay='Charge', mode='design')
-        if hasattr(sys5, 'conn_13'): sys5.conn_13.set_attr(T=400)
-        self.current_irr = 1000
+        self.current_irr = 900
+        # Warm-start from Mode 1 design (similar PTC→Charge HX topology)
         ok5, _, _ = self.attempt_to_solve(sys5, 'design', 'base_design', '5', tries=10)
         if ok5 and sys5.network.converged:
             sys5.network.save(os.path.join('.tespy_cache', 'base_design_5'))
         self.solar_system = sys5
         
-        # ---- Mode 6 (full charge, direct solve works) ----
+        # ---- Mode 6 (full TES charge cycle, Parallel: PTC→TES + aux→process) ----
+        self.mode6_design_available = False
         try:
             self.irr = 1000
             sys6 = _make_system(400)
@@ -270,20 +303,20 @@ class Solver:
                 sys6.charge_hx_kA = self.charge_hx_kA
             sys6.set_operation_mode(TESmode='6', current_irr=1000,
                 profile=sys6.tes.profile, prev_TES_lay='Charge', mode='design')
-            if hasattr(sys6, 'conn_13'): sys6.conn_13.set_attr(T=400)
-            sys6.network.solve('design', max_iter=100)
-            sys6.network.save(os.path.join('.tespy_cache', 'base_design_6'))
+            if hasattr(sys6, 'conn_13'):
+                sys6.conn_13.set_attr(T=400)
+            sys6.solve_network(mode='design', TESmode='6')  # saves to .tespy_cache/base_design_6
+            if sys6.network.converged:
+                self.mode6_design_available = True
+                print('[Mode 6 design] Converged — base_design_6 saved.')
             self.solar_system = sys6
         except Exception as e:
             print(f'[WARNING] Mode 6 design initialization failed: {e}')
-            print('          Mode 6 will fall back to Mode 4 at runtime.')
-            self.solve_network_steady(TESmode='4')
-            try:
-                shutil.copytree(os.path.join('.tespy_cache', 'base_design_4'), os.path.join('.tespy_cache', 'base_design_6'), dirs_exist_ok=True)
-            except Exception:
-                pass
+            print('          Mode 6 offdesign will cold-start (no init_path).')
+            # Do NOT copy base_design_4 here — the Mode 4 CSV has incompatible
+            # connection labels (no 01_CC_PTC) and causes TESPy "not found" errors.
         
-        # 
+
     # -------------------------------------------------------------------------
     # 1) Convergence Checking
     # -------------------------------------------------------------------------
@@ -552,6 +585,11 @@ class Solver:
         for iteration in range(max_iter):
             if mode == 'offdesign':
                 system.network.set_attr(iterinfo=False)
+                # Propagate design-point TES mass flow so set_operation_mode can constrain it
+                if TESmode in ['1', '5', '6'] and hasattr(self, 'charge_tes_m_design'):
+                    system.tes_charge_m = self.charge_tes_m_design
+                elif TESmode == '3' and hasattr(self, 'discharge_tes_m_design'):
+                    system.tes_charge_m = self.discharge_tes_m_design
             ok, att, err = self.attempt_to_solve(system, mode, design_path, TESmode, tries=5)
             TESmode = self.current_mode
             try:
@@ -819,7 +857,10 @@ class Solver:
     
         # ---------- componentes ----------
         ptc     = _get_comp(system, 'ptc_field')
-        hx_chg  = _get_comp(system, 'charge_tes_pipe', 'charge_tes_hx')
+        if mode == '5':
+            hx_chg = _get_comp(system, 'high_t_charge_pipe', 'high_t_charge_hx')
+        else:
+            hx_chg = _get_comp(system, 'charge_tes_pipe', 'charge_tes_hx')
         hx_dch  = _get_comp(system, 'discharge_tes_pipe', 'discharge_tes_hx')
         hx_proc = _get_comp(system, 'process_hx')
         hx_aux  = _get_comp(system, 'preheater_hx')

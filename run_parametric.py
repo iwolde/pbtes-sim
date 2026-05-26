@@ -66,7 +66,7 @@ def run_aperture_sweep(days: int, tag: str) -> list:
     records = []
     for aperture in APERTURE_SWEEP:
         label = f"{tag}_aperture_A{aperture:.0f}"
-        print(f"\n── Aperture = {aperture:.0f} m²  (tag: {label})")
+        print(f"\n-- Aperture = {aperture:.0f} m2  (tag: {label})")
         result = _run_point(
             label=label, days=days,
             topology='Parallel', tank_config='indirect', htf='INCOMP::NaK',
@@ -86,7 +86,7 @@ def run_tes_volume_sweep(days: int, tag: str) -> list:
     for D in TES_DIAMETER_SWEEP:
         for H in TES_HEIGHT_SWEEP:
             label = f"{tag}_tes_D{D:.0f}_H{H:.0f}"
-            print(f"\n── D = {D:.1f} m, H = {H:.1f} m  (tag: {label})")
+            print(f"\n-- D = {D:.1f} m, H = {H:.1f} m  (tag: {label})")
             result = _run_point(
                 label=label, days=days,
                 topology='Parallel', tank_config='indirect', htf='INCOMP::NaK',
@@ -104,7 +104,7 @@ def run_topology_sweep(days: int, tag: str) -> list:
     records = []
     for topology, tank_config in TOPOLOGY_COMBOS:
         label = f"{tag}_{topology}_{tank_config}"
-        print(f"\n── Topology: {topology}, Tank config: {tank_config}  (tag: {label})")
+        print(f"\n-- Topology: {topology}, Tank config: {tank_config}  (tag: {label})")
         result = _run_point(
             label=label, days=days,
             topology=topology, tank_config=tank_config, htf='INCOMP::NaK'

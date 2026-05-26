@@ -8,22 +8,22 @@
 
 ### Convergence Fixes
 
-- [ ] **MODE1_OFFDESIGN**: Fix Mode 1 offdesign divergence for NaK
+- [x] **MODE1_OFFDESIGN**: Fix Mode 1 offdesign divergence for NaK
   - Symptom: TESPy mass flow hits sentinel `-1e12 kg/s`
   - Location: `pbtes/simulation/solver.py` → `attempt_to_solve()`, `pbtes/network/system.py`
   - Root cause: NaK fluid properties pushed out of valid range during offdesign iteration
   - Approach: Better initial guesses, tighter bounds, staged initialization, temperature clamping
 
-- [ ] **MODE6_DESIGN**: Fix Mode 6 design failure
+- [x] **MODE6_DESIGN**: Fix Mode 6 design failure
   - Symptom: `ValueError: too many parameters: 13 required, 14 supplied`
   - Location: `pbtes/network/system.py` → Mode 6 network setup
   - Root cause: One parameter over-specified in the Mode 6 network
   - Approach: Remove the redundant parameter (likely a connection T or Q that conflicts)
 
-- [ ] **CONV_PARALLEL_INDIRECT**: Converge all 6 modes for Parallel/Indirect (baseline)
-- [ ] **CONV_SERIES_INDIRECT**: Converge all 6 modes for Series/Indirect
-- [ ] **CONV_PARALLEL_DIRECT**: Converge all 6 modes for Parallel/Direct
-- [ ] **CONV_SERIES_DIRECT**: Converge all 6 modes for Series/Direct
+- [x] **CONV_PARALLEL_INDIRECT**: Converge all 6 modes for Parallel/Indirect (baseline)
+- [x] **CONV_SERIES_INDIRECT**: Converge all 6 modes for Series/Indirect
+- [x] **CONV_PARALLEL_DIRECT**: Converge all 6 modes for Parallel/Direct
+- [x] **CONV_SERIES_DIRECT**: Converge all 6 modes for Series/Direct
 - [ ] **CONV_RATE_95**: Achieve >= 95% timestep convergence rate for full-year simulation
 - [ ] **EBAL_CHECK**: Verify monthly energy balance error < 1%
 

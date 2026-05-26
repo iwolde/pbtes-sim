@@ -71,7 +71,7 @@ class SolarThermalSystem:
         """
         # 2) Create a new TESPy Network
         self.network = tpn.Network(fluids=[self.HTF], T_unit='C', p_unit='bar', h_unit='kJ / kg')
-        self.network.set_attr(T_range=[300, 600])
+        self.network.set_attr(T_range=[300, 700], m_range=[0.01, 100000.0])
 
         # 3) Create and add components
         self.process_hx = tpc.SimpleHeatExchanger(label='Process_HX')
@@ -80,9 +80,13 @@ class SolarThermalSystem:
         from pbtes.components import PTCField
         self.ptc_field = PTCField(label='PTCField', rows=self.rows, modules=self.modules)
 
-        if mode in [1, 5, 6]:
+        if mode in [1, 6]:
             if getattr(self, 'tank_config', 'indirect') == 'indirect':
                 self.charge_tes_hx = tpc.HeatExchanger(label='Charge_TES_HX')
+                if mode == 1:
+                    self.charge_tes_hx.set_attr(design=['ttd_l'], offdesign=['kA'])
+                elif mode == 6:
+                    self.charge_tes_hx.set_attr(offdesign=['kA'])
             else:
                 self.charge_tes_hx = tpc.SimpleHeatExchanger(label='Charge_TES_Pipe')
             if mode == 1 and getattr(self, 'topology', 'Parallel') == 'Parallel':
@@ -91,9 +95,21 @@ class SolarThermalSystem:
             if getattr(self, 'tank_config', 'indirect') == 'indirect':
                 self.tes_ch_source = tpc.Source('TES_charge_inlet_source')
                 self.tes_ch_sink   = tpc.Sink('TES_charge_outlet_sink')
+        elif mode == 5:
+            if getattr(self, 'tank_config', 'indirect') == 'indirect':
+                self.high_t_charge_hx = tpc.HeatExchanger(label='High_T_Charge_HX')
+                # design=['ttd_l']: explicitly sizes the HX at the design point.
+                # ttd_l = T_hot_out - T_cold_in = T10 - T13.
+                # Series flow: T10 = T05 = 520°C (preheater Q=0), T13 = 400°C → ttd_l = 120 K.
+                self.high_t_charge_hx.set_attr(design=['ttd_l'], offdesign=['kA'])
+                self.tes_ch_source = tpc.Source('TES_charge_inlet_source')
+                self.tes_ch_sink   = tpc.Sink('TES_charge_outlet_sink')
+            else:
+                self.high_t_charge_hx = tpc.SimpleHeatExchanger(label='High_T_Charge_Pipe')
         elif mode == 3:
             if getattr(self, 'tank_config', 'indirect') == 'indirect':
                 self.discharge_tes_hx = tpc.HeatExchanger(label='Discharge_TES_HX')
+                self.discharge_tes_hx.set_attr(design=['ttd_l'], offdesign=['kA'])
                 self.tes_dch_source = tpc.Source('TES_discharge_inlet_source')
                 self.tes_dch_sink   = tpc.Sink('TES_discharge_outlet_sink')
             else:
@@ -173,20 +189,42 @@ class SolarThermalSystem:
 
         elif mode == 5:
             self.conn_01 = tpcn.Connection(self.cycle_closer, 'out1', self.ptc_field, 'in1', label='01_CC_PTC')
-            self.conn_02 = tpcn.Connection(self.ptc_field, 'out1', self.charge_tes_hx, 'in1', label='02_PTC_CHX')
-            self.conn_10 = tpcn.Connection(self.charge_tes_hx, 'out1', self.preheater_hx, 'in1', label='10_CHX_PH')
+            self.conn_02 = tpcn.Connection(self.ptc_field, 'out1', self.high_t_charge_hx, 'in1', label='02_PTC_CHX')
+            self.conn_10 = tpcn.Connection(self.high_t_charge_hx, 'out1', self.preheater_hx, 'in1', label='10_CHX_PH')
             self.conn_05 = tpcn.Connection(self.preheater_hx, 'out1', self.process_hx, 'in1', label='05_PH_PR')
             self.conn_06 = tpcn.Connection(self.process_hx, 'out1', self.cycle_closer, 'in1', label='06_PR_CC')
             if getattr(self, 'tank_config', 'indirect') == 'indirect':
-                self.conn_13 = tpcn.Connection(self.tes_ch_source, 'out1', self.charge_tes_hx, 'in2', label='13_CHSC_CHX')
-                self.conn_14 = tpcn.Connection(self.charge_tes_hx, 'out2', self.tes_ch_sink, 'in1', label='14_CHX_CHSK')
+                self.conn_13 = tpcn.Connection(self.tes_ch_source, 'out1', self.high_t_charge_hx, 'in2', label='13_CHSC_CHX')
+                self.conn_14 = tpcn.Connection(self.high_t_charge_hx, 'out2', self.tes_ch_sink, 'in1', label='14_CHX_CHSK')
                 self.network.add_conns(self.conn_01, self.conn_02, self.conn_10, self.conn_05, self.conn_06, self.conn_13, self.conn_14)
-                for c in [self.conn_01,self.conn_02,self.conn_10,self.conn_05,self.conn_06,self.conn_13,self.conn_14]:
-                    c.set_attr(T0=550, h0=700, m0=30, p0=5)
+                # IMPORTANT: h0 must be set for ALL connections so TESPy's initialise_source()
+                # is never called — that fallback uses 200°C/250°C which crashes NaK (min 300°C).
+                #
+                # Mode 5 design point: preheater Q=0, TES cold inlet at 480°C (process return
+                # level, realistic TES bottom for a warm-but-not-full TES), ttd_l=20K.
+                # → T10=T05=500°C, T_PTC_out≈560°C (high irradiance), T14≈510°C (TES charge temp)
+                # NaK h at 50 bar: 480°C≈686, 500°C≈716, 560°C≈808 kJ/kg
+                # NaK h at  5 bar: 480°C≈686, 510°C≈732 kJ/kg
+                for c, T0, h0, m0, p0 in [
+                    (self.conn_01, 480, 686, 13.0, 50),  # CC→PTC inlet  = process return
+                    (self.conn_02, 560, 808, 13.0, 50),  # PTC outlet    = high-irr output
+                    (self.conn_10, 500, 716, 13.0, 50),  # HX hot out    = T13+ttd_l=480+20
+                    (self.conn_05, 500, 716, 13.0, 50),  # Preheater out = T10 (Q=0)
+                    (self.conn_06, 480, 686, 13.0, 50),  # Process return
+                    (self.conn_13, 480, 686, 12.0, 5),   # TES cold inlet (process return level)
+                    (self.conn_14, 510, 732, 12.0, 5),   # TES heated outlet
+                ]:
+                    c.set_attr(T0=T0, h0=h0, m0=m0, p0=p0)
             else:
                 self.network.add_conns(self.conn_01, self.conn_02, self.conn_10, self.conn_05, self.conn_06)
-                for c in [self.conn_01,self.conn_02,self.conn_10,self.conn_05,self.conn_06]:
-                    c.set_attr(T0=550, h0=700, m0=30, p0=5)
+                for c, T0, h0, m0, p0 in [
+                    (self.conn_01, 480, 686, 13.0, 50),
+                    (self.conn_02, 560, 808, 13.0, 50),
+                    (self.conn_10, 500, 716, 13.0, 50),
+                    (self.conn_05, 500, 716, 13.0, 50),
+                    (self.conn_06, 480, 686, 13.0, 50),
+                ]:
+                    c.set_attr(T0=T0, h0=h0, m0=m0, p0=p0)
 
         elif mode == 6:
             if getattr(self, 'topology', 'Parallel') == 'Series':
@@ -220,10 +258,23 @@ class SolarThermalSystem:
                 else:
                     conns = [self.conn_01, self.conn_02, self.conn_10, self.conn_04, self.conn_05, self.conn_06]
                 self.network.add_conns(*conns)
-                for conn in conns: conn.set_attr(T0=500, h0=700, m0=5)
+                # NaK h at 50 bar: 480°C≈686, 500°C≈716, 520°C≈747 kJ/kg
+                # NaK h at  5 bar: 400°C≈562, 440°C≈623 kJ/kg
+                for c, h0, m0, p0 in [
+                    (self.conn_01, 716, 12.0, 50),
+                    (self.conn_02, 747, 12.0, 50),
+                    (self.conn_10, 716, 12.0, 50),
+                    (self.conn_04, 716, 7.4, 50),
+                    (self.conn_05, 747, 7.4, 50),
+                    (self.conn_06, 686, 7.4, 50),
+                ]:
+                    c.set_attr(h0=h0, m0=m0, p0=p0)
+                if getattr(self, 'tank_config', 'indirect') == 'indirect':
+                    self.conn_13.set_attr(h0=562, m0=25.0, p0=5)
+                    self.conn_14.set_attr(h0=623, m0=25.0, p0=5)
                 if getattr(self, 'tank_config', 'indirect') == 'indirect':
                     self.conn_02.set_attr(p=self.conexion_params['6_p'], fluid=self.conexion_params['6_f'])
-                    self.charge_tes_hx.set_attr(pr1=1.0, pr2=1.0)
+                    self.charge_tes_hx.set_attr(pr2=1.0)
 
 
         # === STRUCTURAL parameters (always applied, design + offdesign) ===
@@ -245,22 +296,29 @@ class SolarThermalSystem:
                 fluid=self.conexion_params['6_f']
             )
         
-        if mode in [5, 6] and hasattr(self, 'conn_02') and self.conn_02 is not None:
+        if mode == 6 and hasattr(self, 'conn_02') and self.conn_02 is not None:
             self.conn_02.set_attr(p=self.conexion_params['6_p'])
         
         # HX pressure drops (structural; skip for M6 Parallel - uses conn p anchors)
         is_m6_par = (mode == 6 and getattr(self, 'topology', 'Parallel') == 'Parallel')
-        if mode in [1, 5, 6] and hasattr(self, 'charge_tes_hx'):
+        if mode in [1, 6] and hasattr(self, 'charge_tes_hx'):
             if getattr(self, 'tank_config', 'indirect') == 'indirect' and not is_m6_par:
                 self.charge_tes_hx.set_attr(pr2=1.0)
+        if mode == 5 and hasattr(self, 'high_t_charge_hx'):
+            if getattr(self, 'tank_config', 'indirect') == 'indirect':
+                # Series flow: no splitter to anchor pr1, must set explicitly
+                self.high_t_charge_hx.set_attr(pr1=1.0, pr2=1.0)
         
         # Process pressure drop (always, structural)
         self.process_hx.set_attr(pr=1.0)
-        if getattr(self, 'topology', 'Parallel') == 'Series':
+        if getattr(self, 'topology', 'Parallel') == 'Series' and mode == 1:
             self.preheater_hx.set_attr(pr=1.0)
         
         # === BOUNDARY CONDITIONS (always applied) ===
-        if hasattr(self, 'conn_05') and self.conn_05 is not None:
+        # Mode 5: conn_05.T is NOT set here — it is determined implicitly by
+        # preheater_hx.Q=0 (T05=T10) and ttd_l=120 (T10=T13+120=520°C).
+        # Setting it explicitly would over-constrain the system.
+        if hasattr(self, 'conn_05') and self.conn_05 is not None and mode != 5:
             self.conn_05.set_attr(T=self.conexion_params['5_T'])
         if hasattr(self, 'conn_06') and self.conn_06 is not None and not is_m6_par:
             self.conn_06.set_attr(T=self.conexion_params['6_T'])
@@ -285,9 +343,17 @@ class SolarThermalSystem:
                 )
             
             # HX thermal design parameter (force kA computation)
-            if mode in [1, 5] and hasattr(self, 'charge_tes_hx'):
+            if mode == 1 and hasattr(self, 'charge_tes_hx'):
                 if getattr(self, 'tank_config', 'indirect') == 'indirect':
                     self.charge_tes_hx.set_attr(ttd_l=20)
+            # Mode 5 HX: ttd_l=20K at design point.
+            # Design temperatures: T_cold_in=480°C (TES bottom at process-return level),
+            # T_hot_out=T05=500°C (preheater Q=0 → T10=T05=T_cold_in+ttd_l=500°C).
+            # 20K is a realistic terminal temperature difference for an industrial HX,
+            # consistent with all other HXs in the network.
+            if mode == 5 and hasattr(self, 'high_t_charge_hx'):
+                if getattr(self, 'tank_config', 'indirect') == 'indirect':
+                    self.high_t_charge_hx.set_attr(ttd_l=20)
             if mode == 3 and hasattr(self, 'discharge_tes_hx'):
                 if getattr(self, 'tank_config', 'indirect') == 'indirect':
                     self.discharge_tes_hx.set_attr(ttd_l=20)
@@ -307,6 +373,7 @@ class SolarThermalSystem:
         mode 4: Low irradiation, TES in standby (auxiliary heater supplies process)
         mode 6: Mid to high irradiation, PTC full to TES (auxiliary heater supplies process)
         """
+        self._current_irr_for_guess = current_irr
         if prev_TES_lay == 'Charge':
             TES_top = profile[0]
             TES_bot = profile[-1]
@@ -321,6 +388,7 @@ class SolarThermalSystem:
             TES_bot = self.tes.profile[-1]
             
             if getattr(self, 'tank_config', 'indirect') == 'indirect':
+                self.conn_13.set_attr(T=TES_bot)
                 self.conn_14.set_attr(T=TES_bot + 40)  # 40K offset for CHX ttd_l=20 to have working DT
             
             self.preheater_hx.set_attr(Q=0)
@@ -341,9 +409,6 @@ class SolarThermalSystem:
                     c_2=self.component_params.get('ptc_c_2', 0),
                     iam_1=self.component_params.get('ptc_iam_1', 0),
                     iam_2=self.component_params.get('ptc_iam_2', 0))
-                # CHX ttd_l placeholder for DOF check; design file overrides with kA
-                if hasattr(self, 'charge_tes_hx') and getattr(self, 'tank_config', 'indirect') == 'indirect':
-                    self.charge_tes_hx.set_attr(ttd_l=20)
                 if getattr(self, 'topology', 'Parallel') == 'Series':
                     self.process_hx.set_attr(Q=None)
                     if hasattr(self, 'ptc_field_A_designed'):
@@ -384,48 +449,50 @@ class SolarThermalSystem:
             self.create_network(mode=3, design_mode=mode)
             self.tes.set_state('discharge')
             
-            self.conn_04.set_attr(T=Ref(self.conn_15, 1, 20))   # T04 = T15 - 20
+            if getattr(self, 'tank_config', 'indirect') == 'indirect':
+                TES_top = profile[0] if prev_TES_lay == 'Charge' else profile[-1]
+                self.conn_15.set_attr(T=TES_top)
+                self.conn_04.set_attr(T=Ref(self.conn_15, 1, -20))   # T04 = T15 - 20
+                self.conn_16.set_attr(T=None)
+            else:
+                TES_top = profile[-1] if prev_TES_lay == 'Discharge' else profile[0]
+                self.conn_04.set_attr(T=TES_top)
             self.conn_11.set_attr(T=None)
-            self.conn_16.set_attr(T=None)
-            
-            # DHX ttd_l placeholder for DOF check; design file overrides with kA
-            if hasattr(self, 'discharge_tes_hx') and getattr(self, 'tank_config', 'indirect') == 'indirect':
-                self.discharge_tes_hx.set_attr(ttd_l=20)
             
             # Regime selection (offdesign only)
             if mode != 'design':
                 t_ph_out = self.conexion_params['5_T']
-                TES_top = profile[-1] if prev_TES_lay == 'Discharge' else profile[0]
                 if TES_top >= t_ph_out:
                     self.conn_05.set_attr(T=None)
                     self.preheater_hx.set_attr(Q=0)
-            
-            # DHX ttd_l placeholder for DOF check; design file overrides with kA
-            if hasattr(self, 'discharge_tes_hx') and getattr(self, 'tank_config', 'indirect') == 'indirect':
-                self.discharge_tes_hx.set_attr(ttd_l=20)
-            
-            # Regime selection (offdesign only)
-            if mode != 'design':
-                t_ph_out = self.conexion_params['5_T']
-                TES_top = profile[-1] if prev_TES_lay == 'Discharge' else profile[0]
-                if TES_top >= t_ph_out:
-                    self.conn_05.set_attr(T=None)
 
         elif TESmode == '4':
             self.create_network(mode=4, design_mode=mode)
              
         elif TESmode == '5':
-            # Mode 5: Series high-T charge (PTC -> HX -> PH -> PR -> CC)
-            # Uses its own high-temperature charge HX (sized via ttd_l)
+            # Mode 5: Series flow PTC -> High_T_HX -> Preheater -> Process -> CC.
+            # At design: preheater Q=0, ttd_l=20K. TES cold inlet (T13) is assumed to be
+            # at least 480°C (process return level), yielding T10=500°C.
             self.create_network(mode=5, design_mode=mode)
             self.tes.set_state('charge')
             
-            TES_bot = self.tes.profile[-1]
+            if mode == 'design':
+                TES_bot = 480.0 # Force realistic TES bottom for design to ensure T10 >= 500
+            else:
+                TES_bot = self.tes.profile[-1]
+                
             if getattr(self, 'tank_config', 'indirect') == 'indirect':
-                T14_val = min(TES_bot + 60, 580)
-                self.conn_14.set_attr(T=T14_val)
-            self.conn_10.set_attr(T=TES_bot if getattr(self, 'tank_config', 'indirect') == 'direct' else None)
-            self.preheater_hx.set_attr(pr=1.0)
+                self.conn_13.set_attr(T=TES_bot)
+                # Set target TES return temperature for design and offdesign
+                self.conn_14.set_attr(T=TES_bot + 40)
+            else:
+                self.conn_10.set_attr(T=TES_bot)
+            
+            # Preheater off at design: forces all solar surplus to TES via HX
+            if mode == 'design':
+                self.preheater_hx.set_attr(Q=0)
+                self.conn_02.set_attr(T=560)
+                self.ptc_field.set_attr(A='var')
             
             if mode == 'offdesign':
                 self.ptc_field.set_attr(
@@ -438,9 +505,6 @@ class SolarThermalSystem:
                     c_2=self.component_params.get('ptc_c_2', 0),
                     iam_1=self.component_params.get('ptc_iam_1', 0),
                     iam_2=self.component_params.get('ptc_iam_2', 0))
-                # CHX ttd_l placeholder for DOF check; design file overrides with kA
-                if hasattr(self, 'charge_tes_hx') and getattr(self, 'tank_config', 'indirect') == 'indirect':
-                    self.charge_tes_hx.set_attr(ttd_l=20)
 
         elif TESmode == '6':
             is_m6par = (getattr(self, 'topology', 'Parallel') == 'Parallel')
@@ -451,8 +515,9 @@ class SolarThermalSystem:
             
             if is_m6par:
                 if getattr(self, 'tank_config', 'indirect') == 'indirect':
+                    self.conn_13.set_attr(T=TES_bot)
                     self.conn_14.set_attr(T=TES_bot + 40)
-                self.conn_02.set_attr(T=self.conexion_params['5_T'])
+                self.conn_02.set_attr(T=560)  # Constrain PTC outlet for high-T charge
                 if mode == 'design':
                     self.ptc_field.set_attr(
                         A=self.component_params['ptc_A'], E=self.component_params['ptc_E'],
@@ -497,6 +562,115 @@ class SolarThermalSystem:
             raise ValueError(f"Unknown mode {TESmode}")
  
  
+    def _apply_design_guesses(self, design_path_full: str) -> None:
+        """Load connection T0, m0, h0 from design CSV as initial guesses for offdesign."""
+        import os, pandas as pd
+        csv = os.path.join(design_path_full, 'connections.csv')
+        if not os.path.exists(csv):
+            return
+        try:
+            df = pd.read_csv(csv, sep=';', index_col=0)
+        except Exception:
+            return
+        current_irr = getattr(self, '_current_irr_for_guess', None)
+        design_irr = self.component_params.get('ptc_E', 900)
+        m_scale = (current_irr / design_irr) if (current_irr and design_irr > 0) else 1.0
+        m_scale = max(0.1, min(m_scale, 2.0))
+        
+        # Check active labels in the network
+        active_labels = set(self.network.conns.index) if hasattr(self.network, 'conns') else set()
+        
+        # For Mode 1 Parallel topology, we implement physically consistent mass flow scaling
+        # to ensure mass balance at the splitter and heat exchanger energy balance.
+        is_mode1_parallel = (
+            getattr(self, 'topology', 'Parallel') == 'Parallel'
+            and '09_SP1_CHX' in active_labels
+        )
+        
+        m_charge_scale = m_scale
+        T10_guess = None
+        if is_mode1_parallel:
+            try:
+                # Find design mass flows
+                m_ptc_design = float(df.loc['02_PTC_SP1', 'm'])
+                m_process_design = float(df.loc['04_SP1_PH', 'm'])
+                m_charge_design = float(df.loc['09_SP1_CHX', 'm'])
+                
+                # Perfect mass balance at splitter
+                m_ptc_guess = m_ptc_design * m_scale
+                m_charge_guess = m_ptc_guess - m_process_design
+                m_charge_guess = max(0.5, m_charge_guess) # clamp to positive
+                
+                m_charge_scale = m_charge_guess / m_charge_design
+                
+                # Solve for dT_cold such that:
+                # LMTD_target = (dT_hot - dT_cold) / ln(dT_hot / dT_cold)
+                # where dT_hot = 80.0
+                dT_hot = 80.0
+                L_target = 43.28 * m_charge_scale
+                
+                # Binary search for dT_cold in range [0.01, 79.9]
+                import numpy as np
+                low, high = 0.01, 79.9
+                for _ in range(20):
+                    mid = (low + high) / 2.0
+                    # LMTD function
+                    if abs(dT_hot - mid) < 1e-6:
+                        L_val = mid
+                    else:
+                        L_val = (dT_hot - mid) / np.log(dT_hot / mid)
+                    
+                    if L_val < L_target:
+                        low = mid
+                    else:
+                        high = mid
+                
+                T10_guess = 400.0 + mid
+            except Exception:
+                m_charge_scale = m_scale
+
+        secondary_labels = set()
+        # conn_04, conn_05, conn_06 are process loop conns
+        for cname in ['conn_04', 'conn_05', 'conn_06', 'conn_15', 'conn_16']:
+            c = getattr(self, cname, None)
+            if c and hasattr(c, 'label'):
+                secondary_labels.add(str(c.label))
+                
+        # charging labels that scale with m_charge_scale
+        charge_labels = set()
+        for cname in ['conn_09', 'conn_10', 'conn_13', 'conn_14']:
+            c = getattr(self, cname, None)
+            if c and hasattr(c, 'label'):
+                charge_labels.add(str(c.label))
+
+        for name in dir(self):
+            if not name.startswith('conn_'):
+                continue
+            conn = getattr(self, name, None)
+            if conn is None or not hasattr(conn, 'set_attr'):
+                continue
+            label = getattr(conn, 'label', None)
+            if label is None or label not in df.index:
+                continue
+            try:
+                row = df.loc[label]
+                m0 = float(row.get('m', 30))
+                h0 = float(row.get('h', 700))
+                T0 = float(row.get('T', 500))
+                
+                if str(label) == '10_CHX_MG2' and T10_guess is not None:
+                    T0 = T10_guess
+                    h0 = 594.37 + 1.5233 * (T0 - 420.0)
+                
+                if str(label) in charge_labels:
+                    m0 = m0 * m_charge_scale
+                elif str(label) not in secondary_labels:
+                    m0 = m0 * m_scale
+                    
+                conn.set_attr(m0=m0, h0=h0, T0=T0)
+            except Exception:
+                pass
+
     def solve_network(self, mode='design', design_path="base_design", TESmode='1', use_init_path=False):
         """
         Attempts to solve the network in the specified mode (default: 'design').
@@ -512,7 +686,6 @@ class SolarThermalSystem:
         os.makedirs(base_dir, exist_ok=True)
         name = os.path.join(base_dir, f'base_design_{TESmode}')        
         if mode == 'design':
-
             self.network.solve(mode=mode, max_iter=100)
             abs_name = os.path.abspath(name)
             if os.path.exists(abs_name):
@@ -532,14 +705,17 @@ class SolarThermalSystem:
                 self.ptc_field_A_designed = self.ptc_field.A.val
             if (TESmode == '1' and hasattr(self, 'charge_tes_hx')
                     and self.charge_tes_hx.kA.val is not None):
-                # Store kA in-memory for cross-mode use (Modes 5, 6 share the same HX)
                 self.charge_hx_kA = self.charge_tes_hx.kA.val
+            if (TESmode == '5' and hasattr(self, 'high_t_charge_hx')
+                    and self.high_t_charge_hx.kA.val is not None):
+                self.charge_hx_kA = self.high_t_charge_hx.kA.val
         else:
             design_path_full = os.path.join(base_dir, f'base_design_{TESmode}')
+            if use_init_path:
+                self._apply_design_guesses(design_path_full)
             kwargs = {'mode': mode, 'max_iter': 200, 'design_path': design_path_full}
             if use_init_path:
                 kwargs['init_path'] = design_path_full
             self.network.solve(**kwargs)
             #if not self.network.converged:
             #    raise RuntimeError("TESPy solver did not converge.")
-

@@ -134,8 +134,8 @@ def _assert_series_mode6(system, tank_config):
 
 
 def _assert_mode5(system, tank_config):
-    """Mode 5: Series high-T charge (PTC → HX → PH → PR → CC)"""
-    assert hasattr(system, 'charge_tes_hx')
+    """Mode 5: High-T charge (PTC → high_t_charge_hx → PH → PR → CC)"""
+    assert hasattr(system, 'high_t_charge_hx'), "Missing high_t_charge_hx (Mode 5 HX)"
     assert not hasattr(system, 'splitter1') and not hasattr(system, 'merge2')
     if tank_config == 'indirect':
         assert hasattr(system, 'conn_13')

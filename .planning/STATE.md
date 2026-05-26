@@ -1,24 +1,25 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.2
-milestone_name: Publication Pipeline
-status: Phase B complete — Ready for Phase C (Physics & Convergence)
-last_updated: "2026-05-21T12:00:00-04:00"
+milestone: v1.3
+milestone_name: Production Runs & Figures
+status: Phase C complete — Ready for Phase D (Results & Publication)
+last_updated: "2026-05-26T15:15:00-04:00"
 progress:
   total_phases: 4
-  completed_phases: 2
-  percent: 50
-branch: main
+  completed_phases: 3
+  percent: 75
+branch: fix/mode-convergence-clean
 ---
 
 # Project State
 
-## Current Phase: C (Physics & Convergence Tuning)
+## Current Phase: D (Results & Publication)
 
-Phase A (foundation) and Phase B (bug fixes + script consolidation) are complete.
-The current focus is **fixing TESPy solver convergence** for Mode 1 offdesign
-and Mode 6 design initialization, and converging all modes for all 4
-topologies. See `TODO.md` for the full task list.
+Phase A, B, and C (Physics & Convergence) are complete.
+All 4 topologies (Parallel/Series x Direct/Indirect) now converge successfully
+across all modes, passing all unit tests and parametric sweeps.
+The current focus is **running production simulations** and **generating figures** for the paper.
+See `TODO.md` for the full task list.
 
 ## Key Decisions (settled — do not revisit)
 

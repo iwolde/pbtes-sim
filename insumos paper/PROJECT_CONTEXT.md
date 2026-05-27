@@ -60,9 +60,21 @@ solar multiple and TES volume, with full economic analysis (LCOH).
 | | **Indirect** (HX between PTC and TES) | **Direct** (PTC fluid enters TES) |
 |---|---|---|
 | **Parallel** | HTF splits to process and TES simultaneously | Same but direct contact |
-| **Series** | TES always in series with process HX | Same but direct contact |
+| **Series** | TES always in series with process HX | Same but direct contact (upstream Hot Tank, downstream Cold Tank) |
 
 All four must be simulated for the paper. Baseline is Parallel/indirect.
+
+#### Direct Configuration Key Implementation Details
+1. **Direct-Contact Modeling**: In the direct configuration, primary NaK flows directly through the packed bed rock tanks (Hot Tank and Cold Tank) without any intermediate heat exchangers. These are modeled inside the TESPy network as `SimpleHeatExchanger` (pipe) components.
+2. **Series/Direct Mode 1 Charging**: 
+   - The Hot Tank is located upstream of the process (receives the high-temperature PTC outlet at ~560°C). The Cold Tank is located downstream of the process (receives the process return at ~480°C).
+   - The coupling variables set on the TESPy connections are the Hot Tank outlet (`conn_ht_ph.T`) and the Cold Tank outlet (`conn_10.T`), which are set to the bottom temperatures calculated iteratively by the 1D Schumann rock bed model.
+   - To prevent over-specification, the process inlet connection `conn_05` is **not** set to a fixed temperature of 520°C in TESPy since the `Q_preheater = 0` constraint already forces `T_05` to equal the Hot Tank outlet temperature.
+3. **Mode 3 Discharging (Parallel Mixing)**: 
+   - To prevent convergence issues and maintain network simplicity, both the Parallel/Direct and Series/Direct Mode 3 discharging layouts are modeled **analytically (Option A)** rather than using splitting/mixing valve components in TESPy.
+   - The mixing valve ratio `r = m_hot / m_cold` is solved analytically at each timestep based on current tank top temperatures `T_hot` and `T_cold` to hit the target `T_target = 520°C`.
+   - TESPy only solves the simple process-only loop (identical to Mode 4), using the pre-calculated auxiliary heater load `Q_preheater` (if the blended temperature `T_mix < 520°C`).
+   - The Hot Tank and Cold Tank Schumann models are then updated independently with their respective analytical mass flows `m_hot` and `m_cold`.
 
 ---
 

@@ -109,11 +109,30 @@ class Solver:
         T_min_discharge = t_proc_set + 20  # 480+20=500 C (T04 = T15-20 >= T11 = 480)
         T_max_discharge = 580              # NaK safe limit - 20, expanded range
         
-        # Calculate State of Charge (SOC) 
-        current_soc = self.solar_system.tes.calculate_SoC(TES_profile)
-        soc_empty = self.solar_system.tes.calculate_SoC(np.ones_like(TES_profile) * 400.0)
-        soc_full = self.solar_system.tes.calculate_SoC(np.ones_like(TES_profile) * 560.0)
-        soc_norm = (current_soc - soc_empty) / max(soc_full - soc_empty, 1e-3)
+        # Calculate State of Charge (SOC)
+        is_series_direct = (self.tank_config == 'direct' and self.topology == 'Series'
+                            and hasattr(self.solar_system, 'cold_tes'))
+        if is_series_direct:
+            hot_soc = self.solar_system.hot_tes.calculate_SoC(
+                self.solar_system.hot_tes.profile)
+            cold_soc = self.solar_system.cold_tes.calculate_SoC(
+                self.solar_system.cold_tes.profile)
+            current_soc = hot_soc + cold_soc
+            soc_empty_h = self.solar_system.hot_tes.calculate_SoC(
+                np.ones_like(self.solar_system.hot_tes.profile) * 400.0)
+            soc_full_h = self.solar_system.hot_tes.calculate_SoC(
+                np.ones_like(self.solar_system.hot_tes.profile) * 560.0)
+            soc_empty_c = self.solar_system.cold_tes.calculate_SoC(
+                np.ones_like(self.solar_system.cold_tes.profile) * 400.0)
+            soc_full_c = self.solar_system.cold_tes.calculate_SoC(
+                np.ones_like(self.solar_system.cold_tes.profile) * 560.0)
+            soc_norm = ((current_soc - soc_empty_h - soc_empty_c)
+                        / max(soc_full_h + soc_full_c - soc_empty_h - soc_empty_c, 1e-3))
+        else:
+            current_soc = self.solar_system.tes.calculate_SoC(TES_profile)
+            soc_empty = self.solar_system.tes.calculate_SoC(np.ones_like(TES_profile) * 400.0)
+            soc_full = self.solar_system.tes.calculate_SoC(np.ones_like(TES_profile) * 560.0)
+            soc_norm = (current_soc - soc_empty) / max(soc_full - soc_empty, 1e-3)
     
         # --- Lectura interna (opcional) de T_ptc_out desde la red actual ---
         def _read_T_ptc_out():
@@ -238,15 +257,21 @@ class Solver:
         
         # ---- Mode 1 (charge + process, computes kA) ----
         self.system_mode = 'Full'; self.TES_lay = 'Charge'; self.irr = 1000
+        is_series_direct = (self.tank_config == 'direct' and self.topology == 'Series')
         sys1 = _make_system(450)  # Design at warmer T_bot for better offdesign CHX DT
+        if is_series_direct:
+            sys1.hot_tes.profile = np.ones(20) * 520.0
+            sys1.cold_tes.profile = np.ones(20) * 440.0
         self.solar_system = sys1
         self.solve_network_steady(TESmode='1')
-        # Store kA for cross-mode use and design TES charge flow for offdesign constraints
+        # Store kA for cross-mode use (indirect only) and design TES charge flow for offdesign constraints
         self.charge_hx_kA = getattr(sys1, 'charge_hx_kA', None)
-        # Read design-point TES charge mass flow (used in offdesign to constrain conn_13.m)
-        try:
-            self.charge_tes_m_design = sys1.conn_13.m.val
-        except Exception:
+        if not is_series_direct:
+            try:
+                self.charge_tes_m_design = sys1.conn_13.m.val
+            except Exception:
+                self.charge_tes_m_design = None
+        else:
             self.charge_tes_m_design = None
         ka_str = f"{self.charge_hx_kA:.1f}" if self.charge_hx_kA is not None else "None"
         m_str = f"{self.charge_tes_m_design:.2f}" if self.charge_tes_m_design is not None else "None"
@@ -271,7 +296,10 @@ class Solver:
         sys3.solve_network(mode='design', TESmode='3')
         self.solar_system = sys3
         try:
-            self.discharge_tes_m_design = sys3.conn_15.m.val
+            if hasattr(sys3, 'conn_15'):
+                self.discharge_tes_m_design = sys3.conn_15.m.val
+            else:
+                self.discharge_tes_m_design = self.charge_tes_m_design
         except Exception:
             self.discharge_tes_m_design = self.charge_tes_m_design
         
@@ -399,7 +427,12 @@ class Solver:
                         current_irr=self.current_irr, profile=saved_profile)
                     # Re-apply TES boundary conditions!
                     tank_cfg = getattr(system, 'tank_config', 'indirect')
-                    if TESmode in ['1','5','6']:
+                    topo = getattr(system, 'topology', 'Parallel')
+                    is_sd_m1 = (TESmode == '1' and tank_cfg == 'direct' and topo == 'Series')
+                    if is_sd_m1:
+                        system.conn_ht_ph.set_attr(T=system.hot_tes.profile[-1])
+                        system.conn_10.set_attr(T=system.cold_tes.profile[-1])
+                    elif TESmode in ['1','5','6']:
                         if getattr(self, 'tank_config', 'indirect') == 'direct':
                             system.conn_10.set_attr(T=system.tes.profile[-1])
                         else:
@@ -442,6 +475,7 @@ class Solver:
                 conv = bool(getattr(system.network, 'converged', False))
                 attempts.append({'mode': TESmode, 'try_idx': k, 'tespy_converged': conv})
                 if conv:
+                    self.current_mode = TESmode
                     return True, attempts, None
                 else:
                     last_err = "TESPy did not converge."
@@ -555,9 +589,16 @@ class Solver:
         }
         self._last_iter_info = None    # se poblará al final del paso
         tank_cfg = getattr(system, 'tank_config', 'indirect')
+        is_series_direct_m1 = (TESmode == '1' and tank_cfg == 'direct'
+                               and getattr(system, 'topology', 'Parallel') == 'Series')
         # 2) Initialize the TES_HX source temperature from top/bottom
         if TESmode in ['1','5','6']:
-            if getattr(self, 'tank_config', 'indirect') == 'direct':
+            if is_series_direct_m1:
+                hot_bot = system.hot_tes.profile[-1]
+                cold_bot = system.cold_tes.profile[-1]
+                system.conn_ht_ph.set_attr(T=hot_bot)
+                system.conn_10.set_attr(T=cold_bot)
+            elif getattr(self, 'tank_config', 'indirect') == 'direct':
                 if hasattr(system, 'charge_tes_hx'):
                     T_in_bot = system.tes.profile[-1]
                     system.conn_10.set_attr(T=T_in_bot)
@@ -574,14 +615,29 @@ class Solver:
         elif TESmode in ['3']:
             tank_cfg = getattr(system, 'tank_config', 'indirect')
             if tank_cfg == 'direct':
-                T_in_top = system.tes.profile[-1]
-                system.conn_04.set_attr(T=T_in_top)
+                system.hot_tes.set_state('discharge')
+                system.cold_tes.set_state('discharge')
+                T_hot = system.hot_tes.profile[-1]
+                T_cold = system.cold_tes.profile[-1]
+                if T_cold >= 520.0:
+                    T_mix = T_cold
+                elif T_hot >= 520.0:
+                    T_mix = 520.0
+                else:
+                    T_mix = T_hot
+                system.conn_04.set_attr(T=T_mix)
             else:
                 T_in_top = system.tes.profile[-1]
                 system.conn_15.set_attr(T=T_in_top)
 
         mode_3_fail = False
-        old_profile = np.array(system.tes.profile).copy()
+        is_direct_m3 = (TESmode == '3' and tank_cfg == 'direct')
+        if is_series_direct_m1 or is_direct_m3:
+            old_hot_profile = np.array(system.hot_tes.profile).copy()
+            old_cold_profile = np.array(system.cold_tes.profile).copy()
+            old_profile = old_hot_profile
+        else:
+            old_profile = np.array(system.tes.profile).copy()
         for iteration in range(max_iter):
             if mode == 'offdesign':
                 system.network.set_attr(iterinfo=False)
@@ -655,16 +711,30 @@ class Solver:
                 break
             if TESmode in ['2', '4']:
                 status = 'converged'
-                profile = system.tes.profile
-                old_profile = system.tes.calc_heat_loss(profile, 3600, Tamb)
-                system.tes.profile = old_profile
+                if getattr(system, 'tank_config', 'indirect') == 'direct':
+                    hot_p = system.hot_tes.profile
+                    cold_p = system.cold_tes.profile
+                    old_hot_profile = system.hot_tes.calc_heat_loss(hot_p, 3600, Tamb)
+                    old_cold_profile = system.cold_tes.calc_heat_loss(cold_p, 3600, Tamb)
+                    system.hot_tes.profile = old_hot_profile
+                    system.cold_tes.profile = old_cold_profile
+                    old_profile = old_hot_profile
+                else:
+                    profile = system.tes.profile
+                    old_profile = system.tes.calc_heat_loss(profile, 3600, Tamb)
+                    system.tes.profile = old_profile
                 iter_info['status'] = 'converged'
                 iter_info['final_mode'] = TESmode
                 self.TES_profiles.append(old_profile)
                 break
             # b) Read new TES inlet conditions from TES_HX outlet
             if TESmode in ['1','5','6']:
-                if getattr(self, 'tank_config', 'indirect') == 'direct':
+                if is_series_direct_m1:
+                    T_hot_in = system.conn_02.T.val
+                    m_hot_in = system.conn_02.m.val_SI
+                    T_cold_in = system.conn_06.T.val
+                    m_cold_in = system.conn_06.m.val_SI
+                elif getattr(self, 'tank_config', 'indirect') == 'direct':
                     topo = getattr(system, 'topology', 'Parallel')
                     if TESmode == '1':
                         inlet_conn = system.conn_09 if topo == 'Parallel' else system.conn_06
@@ -684,23 +754,74 @@ class Solver:
                 else:
                     T_tes_in = system.conn_16.T.val
                     m_tes_in = system.conn_16.m.val_SI
-            if m_tes_in < 0.01:
-                self.mode_alert = True
-                iter_info['status'] = 'diverged'
-                iter_info['final_mode'] = TESmode
-                print('TES mass flow alert')
-                break
+            if is_series_direct_m1:
+                if m_hot_in < 0.01 or m_cold_in < 0.01:
+                    self.mode_alert = True
+                    iter_info['status'] = 'diverged'
+                    iter_info['final_mode'] = TESmode
+                    print('TES mass flow alert (two-tank)')
+                    break
+            elif TESmode in ['1','5','6','3']:
+                if m_tes_in < 0.01:
+                    self.mode_alert = True
+                    iter_info['status'] = 'diverged'
+                    iter_info['final_mode'] = TESmode
+                    print('TES mass flow alert')
+                    break
 
-            system.tes.update_temperature_profile(
-                T_in=T_tes_in,
-                mass_flow=m_tes_in,
-                initial_profile=old_profile
-            )
-            T_tes_out = system.tes.tout
+            if is_series_direct_m1 or is_direct_m3:
+                if is_series_direct_m1:
+                    system.hot_tes.update_temperature_profile(
+                        T_in=T_hot_in, mass_flow=m_hot_in,
+                        initial_profile=old_hot_profile)
+                    system.cold_tes.update_temperature_profile(
+                        T_in=T_cold_in, mass_flow=m_cold_in,
+                        initial_profile=old_cold_profile)
+                else:
+                    # Mode 3 direct discharging:
+                    # 1. Compute splits analytically
+                    T_hot = old_hot_profile[-1]
+                    T_cold = old_cold_profile[-1]
+                    if T_cold >= 520.0:
+                        x_hot = 0.0
+                        x_cold = 1.0
+                    elif T_hot >= 520.0:
+                        x_hot = (520.0 - T_cold) / (T_hot - T_cold)
+                        x_cold = 1.0 - x_hot
+                    else:
+                        x_hot = 1.0
+                        x_cold = 0.0
+                    m_hot = x_hot * m_tes_in
+                    m_cold = x_cold * m_tes_in
+                    # 2. Update both tank profiles using T_tes_in (process return T)
+                    system.hot_tes.update_temperature_profile(
+                        T_in=T_tes_in, mass_flow=m_hot,
+                        initial_profile=old_hot_profile)
+                    system.cold_tes.update_temperature_profile(
+                        T_in=T_tes_in, mass_flow=m_cold,
+                        initial_profile=old_cold_profile)
+                T_hot_out = system.hot_tes.tout
+                T_cold_out = system.cold_tes.tout
+                if is_direct_m3:
+                    if T_cold_out >= 520.0:
+                        T_tes_out = T_cold_out
+                    elif T_hot_out >= 520.0:
+                        T_tes_out = 520.0
+                    else:
+                        T_tes_out = T_hot_out
+            else:
+                system.tes.update_temperature_profile(
+                    T_in=T_tes_in,
+                    mass_flow=m_tes_in,
+                    initial_profile=old_profile)
+                T_tes_out = system.tes.tout
 
             # d) Set the new outlet temperature to the HX inlet for next iteration
             if TESmode in ['1','5','6']:
-                if getattr(self, 'tank_config', 'indirect') == 'direct':
+                if is_series_direct_m1:
+                    system.conn_ht_ph.set_attr(T=T_hot_out)
+                    system.conn_10.set_attr(T=T_cold_out)
+                elif getattr(self, 'tank_config', 'indirect') == 'direct':
                     system.conn_10.set_attr(T=T_tes_out)
                 else:
                     system.conn_13.set_attr(T=T_tes_out)
@@ -713,24 +834,44 @@ class Solver:
                 self.TES_lay = 'Discharge'
 
             # e) Track T_out for our multi-step convergence logic
-            T_out_history.append(T_tes_out)
+            # e) Track T_out for our multi-step convergence logic
+            if is_series_direct_m1 or is_direct_m3:
+                T_out_history.append(T_hot_out)
+            else:
+                T_out_history.append(T_tes_out)
             if len(T_out_history) > 1:
                 prev_T = T_out_history[-2]
                 if abs(prev_T) > 1e-6:
-                    cf = abs(T_tes_out - prev_T) / abs(prev_T)
+                    if is_series_direct_m1 or is_direct_m3:
+                        cf = abs(T_hot_out - prev_T) / abs(prev_T)
+                    else:
+                        cf = abs(T_tes_out - prev_T) / abs(prev_T)
                 else:
                     cf = 0.0
                 conv_factors.append(cf)
 
             # f) Evaluate our custom convergence criteria
             status = self._check_tes_convergence(T_out_history, conv_factors)
-            #status = 'converged'
             if mode == 'design':
-                print(f'outlet TES temperature: {T_tes_out}')   
+                if is_series_direct_m1 or is_direct_m3:
+                    print(f'Hot TES outlet: {T_hot_out:.1f} C, Cold TES outlet: {T_cold_out:.1f} C')
+                else:
+                    print(f'outlet TES temperature: {T_tes_out}')
             if status == 'converged':
-                profile = system.tes.profile
-                old_profile = system.tes.calc_heat_loss(profile, 3600, Tamb)
-                system.tes.profile = old_profile
+                iter_info['status'] = 'converged'
+                iter_info['final_mode'] = TESmode
+                if getattr(system, 'tank_config', 'indirect') == 'direct':
+                    hot_p = system.hot_tes.profile
+                    cold_p = system.cold_tes.profile
+                    old_hot_profile = system.hot_tes.calc_heat_loss(hot_p, 3600, Tamb)
+                    old_cold_profile = system.cold_tes.calc_heat_loss(cold_p, 3600, Tamb)
+                    system.hot_tes.profile = old_hot_profile
+                    system.cold_tes.profile = old_cold_profile
+                    old_profile = old_hot_profile
+                else:
+                    profile = system.tes.profile
+                    old_profile = system.tes.calc_heat_loss(profile, 3600, Tamb)
+                    system.tes.profile = old_profile
                 self.TES_profiles.append(old_profile)
                 break
             elif status == 'diverged':
@@ -860,7 +1001,8 @@ class Solver:
         if mode == '5':
             hx_chg = _get_comp(system, 'high_t_charge_pipe', 'high_t_charge_hx')
         else:
-            hx_chg = _get_comp(system, 'charge_tes_pipe', 'charge_tes_hx')
+            hx_chg = _get_comp(system, 'hot_tank_hx', 'hot_tes_pipe', 'charge_tes_pipe', 'charge_tes_hx')
+        hx_chg2 = _get_comp(system, 'cold_tank_hx', 'cold_tes_pipe')
         hx_dch  = _get_comp(system, 'discharge_tes_pipe', 'discharge_tes_hx')
         hx_proc = _get_comp(system, 'process_hx')
         hx_aux  = _get_comp(system, 'preheater_hx')
@@ -877,6 +1019,8 @@ class Solver:
         # ---------- read actual energy values from components ----------
         q_ptc_kw = _get_Q_kw(ptc)
         q_chg_kw = _get_Q_kw(hx_chg)
+        if hasattr(system, 'cold_tes_pipe') and system.cold_tes_pipe is not None:
+            q_chg_kw += _get_Q_kw(hx_chg2)
         q_dch_kw = _get_Q_kw(hx_dch)
         q_aux_kw = _get_Q_kw(hx_aux)
         q_proc_kw = _get_Q_kw(hx_proc)
@@ -911,19 +1055,34 @@ class Solver:
         # perfil TES para top/bottom igual que en tus plots
         T_tes_top = np.nan
         T_tes_bot = np.nan
+        T_tes_cold_top = np.nan
+        T_tes_cold_bot = np.nan
         try:
-            prof_raw = None
-            if hasattr(self, 'TES_profiles') and self.TES_profiles is not None:
-                pr_val = self.TES_profiles
-                arr = np.array(pr_val[-1] if isinstance(pr_val, (list, tuple)) and len(pr_val) > 0 else pr_val).ravel()
-                prof_raw = arr if arr.size > 0 else None
-            elif hasattr(system, 'tes') and hasattr(system.tes, 'profile'):
-                arr = np.array(system.tes.profile).ravel()
-                prof_raw = arr if arr.size > 0 else None
-            if prof_raw is not None:
-                prof = prof_raw[::-1] if mode in ['1','5','6'] else prof_raw
-                T_tes_bot = float(prof[0])
-                T_tes_top = float(prof[-1])
+            is_sd = hasattr(system, 'cold_tes') and system.cold_tes is not None
+            if is_sd:
+                hot_arr = np.array(system.hot_tes.profile).ravel()
+                if hot_arr.size > 0:
+                    hp = hot_arr[::-1] if mode in ['1','5','6'] else hot_arr
+                    T_tes_bot = float(hp[0])
+                    T_tes_top = float(hp[-1])
+                cold_arr = np.array(system.cold_tes.profile).ravel()
+                if cold_arr.size > 0:
+                    cp = cold_arr[::-1] if mode in ['1','5','6'] else cold_arr
+                    T_tes_cold_bot = float(cp[0])
+                    T_tes_cold_top = float(cp[-1])
+            else:
+                prof_raw = None
+                if hasattr(self, 'TES_profiles') and self.TES_profiles is not None:
+                    pr_val = self.TES_profiles
+                    arr = np.array(pr_val[-1] if isinstance(pr_val, (list, tuple)) and len(pr_val) > 0 else pr_val).ravel()
+                    prof_raw = arr if arr.size > 0 else None
+                elif hasattr(system, 'tes') and hasattr(system.tes, 'profile'):
+                    arr = np.array(system.tes.profile).ravel()
+                    prof_raw = arr if arr.size > 0 else None
+                if prof_raw is not None:
+                    prof = prof_raw[::-1] if mode in ['1','5','6'] else prof_raw
+                    T_tes_bot = float(prof[0])
+                    T_tes_top = float(prof[-1])
         except (IndexError, TypeError, ValueError, AttributeError):
             pass
     
@@ -979,6 +1138,8 @@ class Solver:
             T_ptc_out=T_ptc_out,
             T_tes_top=T_tes_top,
             T_tes_bottom=T_tes_bot,
+            T_tes_cold_top=T_tes_cold_top,
+            T_tes_cold_bot=T_tes_cold_bot,
             # flujos mÃ¡sicos
             mdot_ptc_kg_s=mdot_ptc,
             mdot_tes_charge_kg_s=mdot_tes_charge,
@@ -1015,12 +1176,16 @@ class Solver:
         print("\n=== Starting transient simulation ===")
         start_time = time.time()
 
-        self.solar_system.tes.t_max = 600        
+        self.solar_system.tes.t_max = 600
+        if hasattr(self.solar_system, 'cold_tes') and self.solar_system.cold_tes is not None:
+            self.solar_system.cold_tes.t_max = 600
         self._mode_dwell = 0
         
         # Reset TES profile to initial temperature
         T_init = self.tes_params.get('Initial temperature', 550)
         self.solar_system.tes.profile = np.ones(20) * T_init
+        if hasattr(self.solar_system, 'cold_tes') and self.solar_system.cold_tes is not None:
+            self.solar_system.cold_tes.profile = np.ones(20) * T_init
         
         for idx, row in tqdm(data_frame.iterrows(), total=len(data_frame), desc="Simulating"):
             
@@ -1080,7 +1245,14 @@ class Solver:
             if hasattr(self.solar_system, 'tes') and self.solar_system.tes.profile is not None:
                 self.solar_system.tes.profile = np.clip(
                     self.solar_system.tes.profile, 300.1, 600.0)
-            tes_soc_kWh = self.solar_system.tes.calculate_SoC(self.solar_system.tes.profile)
+            if hasattr(self.solar_system, 'cold_tes') and self.solar_system.cold_tes is not None:
+                self.solar_system.cold_tes.profile = np.clip(
+                    self.solar_system.cold_tes.profile, 300.1, 600.0)
+            if hasattr(self.solar_system, 'cold_tes') and self.solar_system.cold_tes is not None:
+                tes_soc_kWh = (self.solar_system.hot_tes.calculate_SoC(self.solar_system.hot_tes.profile)
+                               + self.solar_system.cold_tes.calculate_SoC(self.solar_system.cold_tes.profile))
+            else:
+                tes_soc_kWh = self.solar_system.tes.calculate_SoC(self.solar_system.tes.profile)
             # Standardize energy accounting to use _collect_step_signals which properly handles units (W -> kJ)
             Q_ptc_kJ = signals.get('ptc_total_kJ', 0.0)
             Q_ph_kJ = signals.get('aux_to_proc_kJ', 0.0)

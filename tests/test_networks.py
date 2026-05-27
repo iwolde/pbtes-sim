@@ -85,12 +85,18 @@ def _assert_parallel_mode1(system, tank_config):
 
 
 def _assert_series_mode1(system, tank_config):
-    """Mode 1 Series: PTC → Process → Tank → CC"""
+    """Mode 1 Series: PTC -> Process -> Tank -> CC (indirect);
+       Mode 1 Series/Direct: PTC -> HotTankHX -> Process -> ColdTankHX -> CC"""
     assert not hasattr(system, 'splitter1')
     assert not hasattr(system, 'merge2')
-    assert system.conn_02.target.label == 'Preheater_HX'
-    assert system.conn_06.target.label in ('Charge_TES_HX', 'Charge_TES_Pipe')
-    if tank_config == 'indirect':
+    if tank_config == 'direct':
+        assert hasattr(system, 'hot_tank_hx')
+        assert hasattr(system, 'cold_tank_hx')
+        assert system.conn_02.target.label == 'Hot_Tank_Pipe'
+        assert system.conn_06.target.label == 'Cold_Tank_Pipe'
+    else:
+        assert system.conn_02.target.label == 'Preheater_HX'
+        assert system.conn_06.target.label in ('Charge_TES_HX', 'Charge_TES_Pipe')
         assert hasattr(system, 'conn_13')
         assert hasattr(system, 'conn_14')
 

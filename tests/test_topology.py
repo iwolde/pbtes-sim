@@ -141,3 +141,77 @@ def test_series_thermodynamics(base_params):
     Q_pr_expected = m_pr * (h_in_pr - h_out_pr)
     
     assert abs(abs(Q_pr_expected) - abs(sys.process_hx.Q.val)) < 1.0
+
+def test_series_direct_mode1_convergence(base_params):
+    params = base_params.copy()
+    params['topology'] = 'Series'
+    params['tank_config'] = 'direct'
+    
+    sys = SolarThermalSystem(tes_params=params['tes_params'],
+                             component_params=params['component_params'],
+                             conexion_params=params['conexion_params'],
+                             HTF=params['HTF'],
+                             topology=params['topology'],
+                             tank_config=params['tank_config'])
+    
+    # Warm-start profiles for direct design charging
+    sys.hot_tes.profile = np.ones(20) * 520.0
+    sys.cold_tes.profile = np.ones(20) * 440.0
+    
+    sys.set_operation_mode(TESmode='1', current_irr=1000, profile=None, prev_TES_lay='Charge', mode='design')
+    sys.network.solve('design', max_iter=100)
+    
+    # Check that network converges
+    assert sys.network.converged
+    
+    # Verify connections and components
+    assert hasattr(sys, 'conn_ht_ph')
+    assert hasattr(sys, 'conn_10')
+    assert sys.hot_tank_hx.label == 'Hot_Tank_Pipe'
+    assert sys.cold_tank_hx.label == 'Cold_Tank_Pipe'
+    
+    # Verify mass balance and temperature progression: T_02 > T_ht_ph > T_06 > T_10
+    m_ptc = sys.conn_01.m.val_SI
+    m_hot = sys.conn_ht_ph.m.val_SI
+    m_cold = sys.conn_10.m.val_SI
+    assert abs(m_ptc - m_hot) < 1e-4
+    assert abs(m_hot - m_cold) < 1e-4
+    
+    T_ptc_out = sys.conn_02.T.val
+    T_hot_out = sys.conn_ht_ph.T.val
+    T_proc_out = sys.conn_06.T.val
+    T_cold_out = sys.conn_10.T.val
+    
+    assert T_ptc_out > T_hot_out
+    assert T_hot_out > T_proc_out
+    assert T_proc_out > T_cold_out
+
+def test_series_direct_mode3_analytical_mixing(base_params):
+    params = base_params.copy()
+    params['topology'] = 'Series'
+    params['tank_config'] = 'direct'
+    
+    # Initialize Solver and run analytical mixing check
+    solver = Solver(tes_params=params['tes_params'],
+                    component_params=params['component_params'],
+                    conexion_params=params['conexion_params'],
+                    HTF=params['HTF'],
+                    topology=params['topology'],
+                    tank_config=params['tank_config'])
+    
+    solver.initialize_modes()
+    
+    solver.solar_system.hot_tes.profile = np.ones(20) * 540.0
+    solver.solar_system.cold_tes.profile = np.ones(20) * 440.0
+    
+    # Run offdesign step using analytical mixing
+    iter_info = solver._iterate_tes_coupling(mode='offdesign', system=solver.solar_system,
+                                             TESmode='3', design_path='base_design_4', Tamb=20.0)
+    
+    assert iter_info['status'] == 'converged'
+    assert iter_info['final_mode'] == '3'
+    assert solver.solar_system.network.converged
+    
+    # Check that mixed temperature is exactly 520C (since T_hot = 540 >= 520 and T_cold = 440 < 520)
+    T_mix = solver.solar_system.conn_04.T.val
+    assert abs(T_mix - 520.0) < 1e-3

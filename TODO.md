@@ -23,7 +23,9 @@
 - [x] **CONV_PARALLEL_INDIRECT**: Converge all 6 modes for Parallel/Indirect (baseline)
 - [x] **CONV_SERIES_INDIRECT**: Converge all 6 modes for Series/Indirect
 - [x] **CONV_PARALLEL_DIRECT**: Converge all 6 modes for Parallel/Direct
-- [x] **CONV_SERIES_DIRECT**: Converge all 6 modes for Series/Direct
+- [x] **CONV_SERIES_DIRECT**: Converge all modes for Series/Direct (Redesigning and implementing direct PBTES coupling)
+  - [x] **SD_MODE1_DIRECT_COUPLING**: Implement `SimpleHeatExchanger` closed-loop model for Mode 1 with direct coupling of `conn_ht_ph.T` and `conn_10.T` from the Schumann model, bypassing the `conn_05` setpoint constraint.
+  - [x] **SD_MODE3_ANALYTICAL_MIXING**: Implement Option A analytical mixing for Mode 3 parallel discharging outside TESPy, running process-only TESPy network, and updating Schumann beds independently.
 - [ ] **CONV_RATE_95**: Achieve >= 95% timestep convergence rate for full-year simulation
 - [ ] **EBAL_CHECK**: Verify monthly energy balance error < 1%
 

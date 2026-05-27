@@ -236,27 +236,34 @@ graph TD
 
 ### 4.4 Series / Direct — Full Layout
 
-All components in a single series loop. The **Hot Tank** is placed **upstream** of the process (receiving PTC output at ~560°C), and the **Cold Tank** is placed **downstream** (receiving process return at ~480°C). During discharge, both tanks feed a mixing valve in parallel (same as Parallel/Direct).
+All components in a single series loop. The primary NaK flows directly **through** the packed beds (Hot Tank and Cold Tank) without any intermediate heat exchangers. In this direct configuration, the beds are modeled inside TESPy as `SimpleHeatExchanger` components (acting as "pipes").
+
+The **Hot Tank** is placed **upstream** of the process (receiving PTC output at ~560°C), and the **Cold Tank** is placed **downstream** (receiving process return at ~480°C).
+
+During discharge, to avoid the pressure drops and temperature control issues of series discharge, both tanks discharge **in parallel** via a **mixing valve**. This mixing valve and return split are solved **analytically (Option A)** rather than directly within the TESPy solver, keeping the network simple and robust.
 
 ```mermaid
 graph TD
     subgraph "Charging Path (Mode 1)"
         P1["⚙ Pump"] --> PTC["☀ PTC Field"]
-        PTC -->|"~560°C"| HT["Hot Tank<br/>(charges at PTC temp)"]
+        PTC -->|"~560°C"| HT["Hot Tank<br/>(SimpleHX pipe)"]
         HT --> PH["Preheater HX<br/>Q=0"]
-        PH -->|"T=520°C"| PR["Process HX<br/>Q=450 kW"]
-        PR -->|"T=480°C"| CT["Cold Tank<br/>(charges at return temp)"]
+        PH -->|"T=T_hot_out"| PR["Process HX<br/>Q=450 kW"]
+        PR -->|"T=480°C"| CT["Cold Tank<br/>(SimpleHX pipe)"]
         CT --> P1
     end
 
-    subgraph "Discharge Path (Mode 3)"
-        HT2["Hot Tank"] -->|"T_hot"| MV["Mixing Valve<br/>ṁ ratio control"]
+    subgraph "Discharge Path (Mode 3 - Analytical Mixing)"
+        HT2["Hot Tank"] -->|"T_hot"| MV["Mixing Valve (Analytical)<br/>ṁ ratio control"]
         CT2["Cold Tank"] -->|"T_cold"| MV
-        MV -->|"T_mix ≥ 520°C"| PH2["Preheater HX"]
-        PH2 --> PR2["Process HX"]
+        MV -->|"T_mix ≥ 520°C"| PH2["Preheater HX (TESPy solved)"]
+        PH2 --> PR2["Process HX (TESPy solved)"]
         PR2 -->|"T≈480°C return<br/>splits to both tanks"| P1D["⚙ Pump"]
     end
 ```
+
+> [!IMPORTANT]
+> **Coupling Boundary**: The coupling boundary in direct configurations is the TES **outlet temperature**. For Series/Direct Mode 1 charging, the outlet of the Hot Tank (`conn_ht_ph.T`) and the Cold Tank (`conn_10.T`) are set as boundary conditions in TESPy, with values derived iteratively from the 1D Schumann rock bed model. To prevent over-specification, the preheater outlet connection `conn_05` must **not** be set to a fixed 520°C, since the `Q=0` preheater constraint already forces `T_05 = conn_ht_ph.T`.
 
 > [!NOTE]
 > In Series/Direct charging, the Hot Tank is **upstream** of the process — it captures the full PTC output temperature. This is different from Series/Indirect where the TES is downstream of the process and only receives ~480°C fluid. This upstream placement is a key advantage of the 2-tank direct approach for the Series topology, as it enables the PTC to charge the Hot Tank at temperatures well above the process requirement.
@@ -350,21 +357,29 @@ graph LR
 
 #### Mode 1 — Series / Direct
 
-HTF flows in series: PTC → **Hot Tank** (charges at PTC temp) → Preheater → Process → **Cold Tank** (charges at process return temp). Single pump.
+HTF flows in series: PTC → **Hot Tank** (charges at PTC temp) → Preheater → Process → **Cold Tank** (charges at process return temp). Single pump. 
+
+Both tanks are modeled directly in the primary loop as `SimpleHeatExchanger` components. 
 
 ```mermaid
 graph LR
     P1["⚙ Pump"] --> PTC["☀ PTC Field"]
-    PTC -->|"~560°C"| HT["Hot Tank<br/>CHARGING"]
-    HT --> PH["Preheater HX<br/>Q=0"]
-    PH -->|"T=520°C"| PR["Process HX<br/>Q=450 kW"]
-    PR -->|"T=480°C"| CT["Cold Tank<br/>CHARGING"]
-    CT --> P1
+    PTC -->|"T_PTC_out (~560°C)"| HT["Hot Tank<br/>CHARGING<br/>(SimpleHX)"]
+    HT -->|"T_hot_out (coupled)"| PH["Preheater HX<br/>Q=0"]
+    PH -->|"T_hot_out"| PR["Process HX<br/>Q=450 kW"]
+    PR -->|"T=480°C"| CT["Cold Tank<br/>CHARGING<br/>(SimpleHX)"]
+    CT -->|"T_cold_out (coupled)"| P1
 
     style PTC fill:#ff9,stroke:#c90
     style HT fill:#f96,stroke:#c30
     style CT fill:#69f,stroke:#36c
 ```
+
+> [!IMPORTANT]
+> **Direct Coupling Rules**:
+> 1. **T_05 / Preheater outlet**: Unlike other modes, the preheater outlet temperature `T_05` is **not** set to a fixed 520°C in TESPy. Doing so would cause over-specification, because `Q_preheater = 0` already requires `T_05` to equal `T_hot_out` (which is set by the Schumann model).
+> 2. **Boundary Conditions**: The Hot Tank outlet (`conn_ht_ph.T`) and Cold Tank outlet (`conn_10.T`) are set directly to the Schumann model bottom temperatures (`hot_tes.tout` and `cold_tes.tout`).
+> 3. **PTC Area**: The PTC area is fixed (not variable), and the flow rates and PTC outlet temperature are calculated by TESPy.
 
 > [!NOTE]
 > Unlike Series/Indirect (where the TES is downstream of the process at ~480°C), Series/Direct places the **Hot Tank upstream** of the process to capture the full PTC output temperature. The Cold Tank downstream captures the process return. This means both tanks in Series/Direct charge at the **same temperature levels** as in Parallel/Direct.
@@ -421,15 +436,31 @@ graph LR
 
 #### Mode 3 — Direct (both Parallel and Series)
 
-Both tanks discharge **in parallel** through a **mixing valve** that controls the blended temperature to ≥520°C. The process return (~480°C) splits back to both tank bottoms. Single pump.
+During discharge, both tanks discharge **in parallel** through a mixing valve to provide active temperature regulation to ≥520°C. 
+
+To maintain network simplicity and prevent solver divergence, the mixing valve and split physics are modeled **analytically (Option A)** rather than placing splitter/merge components inside the TESPy solver:
+
+1. **Analytical Mixing**: At each timestep, we read the outlet temperatures `T_hot` and `T_cold` from the Schumann models of the Hot Tank and Cold Tank respectively.
+2. **Mass Flow Split**: The mixing ratio `r = m_hot / m_cold` is calculated analytically to hit `T_target = 520°C`:
+   ```
+   r = (T_target − T_cold) / (T_hot − T_target)
+   ```
+   Using the total process flow rate `m_total` (determined by process demand), the individual mass flows are:
+   ```
+   m_hot = r / (1 + r) * m_total
+   m_cold = 1 / (1 + r) * m_total
+   ```
+3. **Auxiliary Shortfall**: The mixed temperature is computed as `T_mix = (m_hot·T_hot + m_cold·T_cold) / m_total`. If `T_mix < 520°C`, the supplemental auxiliary heating (Preheater HX) is computed as `Q_preheater = m_total · cp · (520 − T_mix)`.
+4. **TESPy Network**: TESPy only solves the simple process-only loop (identical to Mode 4), using the pre-calculated `Q_preheater` as a constraint. The tanks are completely removed from the TESPy network for this mode.
+5. **TES Updates**: Both Schumann models are updated independently at their respective analytical mass flows `m_hot` and `m_cold`.
 
 ```mermaid
 graph LR
-    HT["Hot Tank<br/>DISCHARGING"] -->|"T_hot"| MV["Mixing Valve<br/>ṁ ratio control"]
-    CT["Cold Tank<br/>DISCHARGING"] -->|"T_cold"| MV
-    MV -->|"T_mix ≥ 520°C"| PH["Preheater HX"]
-    PH --> PR["Process HX<br/>Q=450 kW"]
-    PR -->|"T≈480°C<br/>return splits to<br/>both tank bottoms"| P1["⚙ Pump"]
+    HT["Hot Tank (Schumann)<br/>m_hot"] -->|"T_hot"| MV["Mixing (Analytical)<br/>T_mix calculation"]
+    CT["Cold Tank (Schumann)<br/>m_cold"] -->|"T_cold"| MV
+    MV -->|"T_mix (if < 520°C)"| PH["Preheater HX (TESPy)<br/>Q_preheater auxiliary"]
+    PH -->|"T=520°C"| PR["Process HX (TESPy)<br/>Q=450 kW"]
+    PR -->|"T≈480°C return<br/>splits to both tanks"| P1["⚙ Pump (TESPy)"]
 
     style HT fill:#f96,stroke:#c30
     style CT fill:#69f,stroke:#36c
@@ -437,7 +468,10 @@ graph LR
 ```
 
 > [!IMPORTANT]
-> The mixing valve mass flow ratio is: ṁ_hot / ṁ_cold = (T_target − T_cold) / (T_hot − T_target). When both tank outlets are above 520°C, the controller favors the Cold Tank to preserve Hot Tank energy. When the Cold Tank outlet drops below 520°C, more flow is drawn from the Hot Tank. The Preheater only activates as a last resort when the mixed temperature cannot reach 520°C.
+> **Control Strategy**: 
+> - When `T_hot ≥ 520°C` and `T_cold ≥ 520°C`, the controller favors the Cold Tank to preserve Hot Tank energy.
+> - When `T_cold < 520°C`, more flow is drawn from the Hot Tank to hit `T_mix = 520°C`.
+> - When `T_hot < 520°C` (both tanks depleted), the Preheater supplements the remaining heating load. This extends the useful discharge period and ensures process heat demands are met robustly.
 
 ---
 
@@ -583,7 +617,10 @@ graph LR
 
 ## 6. TES Coupling Iteration
 
-The TES is **not inside** TESPy. Instead, the solver iterates between TESPy and the 1D Schumann model:
+The PBTES packed bed is solved by a 1D Schumann model which is **not inside** the TESPy solver. The solver therefore performs a quasi-steady coupling loop at each timestep.
+
+### 6.1 Indirect Configuration Coupling
+In indirect configurations, the primary NaK loop is decoupled from the TES secondary loop by a physical heat exchanger (HX). TESPy solves the primary loop using a guessed secondary inlet temperature, and the Schumann model updates the rock bed using the resulting HX hot-side temperature. The system iterates sequentially until the heat transfer rates and temperatures converge:
 
 ```mermaid
 sequenceDiagram
@@ -596,7 +633,7 @@ sequenceDiagram
     T->>S: Return T_tes_in, mdot
     S->>P: Step Schumann model (T_in, mdot, old_profile)
     P->>S: Return new T_tes_out, new profile
-    S->>S: Check convergence (|ΔT_out| < 5%)
+    S->>S: Check convergence (|ΔT_out| < tol)
     alt Not converged
         S->>T: Update T_tes_out boundary
         Note right of S: Repeat iteration
@@ -605,15 +642,20 @@ sequenceDiagram
     end
 ```
 
-### Charging flow direction
-- Hot fluid enters the **top** of the packed bed
-- Cold fluid exits the **bottom**
-- Profile array: index 0 = top (hot), index N = bottom (cold)
+### 6.2 Direct Configuration Coupling (Two-Tank, Mode 1)
+In the Series/Direct configuration, there is no decoupling HX. The primary NaK flows directly through both the Hot Tank and Cold Tank beds, which are modeled in TESPy as simple pipe components (`SimpleHeatExchanger`). The coupling boundary variables are the outlet temperatures of both tanks, which are set as boundary conditions on the primary connections `conn_ht_ph.T` and `conn_10.T`.
 
-### Discharging flow direction
-- Cold fluid enters the **bottom** of the packed bed
-- Hot fluid exits the **top**
-- Profile array is reversed for the Schumann model
+The direct coupling loop iterates as follows:
+1. **Initial guess**: The Hot Tank and Cold Tank outlet temperatures are initialized to their current bottom-of-bed temperatures (`hot_tes.profile[-1]` and `cold_tes.profile[-1]`).
+2. **TESPy solve**: TESPy solves the primary closed loop, calculating the primary mass flow rate `m` and the Hot Tank inlet temperature `T_02` (PTC outlet). The Cold Tank inlet temperature is fixed to the process return temperature (`480°C`).
+3. **Schumann update**: Both the Hot Tank and Cold Tank Schumann models are stepped with their respective inlet temperatures (`T_in_hot = T_02`, `T_in_cold = 480°C`) and the common mass flow rate `m`.
+4. **Boundary update**: The connections `conn_ht_ph.T` and `conn_10.T` in TESPy are updated with the new bottom temperatures (`hot_tes.tout` and `cold_tes.tout`).
+5. **Convergence check**: Repeat steps 2-4 until both outlet temperatures converge within tolerance (|ΔT| < 1e-3 °C).
+6. **Time step advance**: Advance the simulation timestep, saving the converged rock bed temperature profiles.
+
+### 6.3 Flow Direction and Nodes
+* **Charging (Top to Bottom)**: Hot fluid enters at the **top** of the packed bed and cold fluid exits at the **bottom**. The outlet temperature is `tout = profile[-1]` (bottom node).
+* **Discharging (Bottom to Top)**: Cold fluid enters at the **bottom** and hot fluid exits at the **top**. The outlet temperature is `tout = profile[0]` (top node). During discharging, the profile array is reversed for the Schumann model execution.
 
 ### Discharge Temperature Control (Direct Configuration Only)
 

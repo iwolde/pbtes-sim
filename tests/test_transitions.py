@@ -120,9 +120,12 @@ def test_convergence_fallback(system_params):
     ok, attempts, err = solver.attempt_to_solve(system, 'design', 'base_design_1', '1', tries=1)
     
     assert ok, "Fallback mechanism did not successfully return True"
-    assert attempts[-1]['mode'] == '4', "Solver did not fall back to Mode 4"
+    # Mode 2 fallback is tried before Mode 4 (solar-only is better than standby).
+    # Accept either Mode 2 (if it converged) or Mode 4 as valid fallback destinations.
+    assert attempts[-1]['mode'] in ('2', '4'), \
+        f"Solver did not fall back to Mode 2 or Mode 4 (got mode={attempts[-1]['mode']})"
     assert attempts[-1]['try_idx'] == 'fallback', "Try index does not indicate fallback"
-    assert attempts[-1]['tespy_converged'] == True, "Mode 4 failed to converge during fallback"
+    assert attempts[-1]['tespy_converged'] == True, "Fallback mode failed to converge"
 
 def test_mass_flow_routing(system_params):
     solver = Solver(**system_params)

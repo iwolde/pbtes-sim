@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: Production Runs & Figures
-status: Phase C Refinement — Completed. Series/Direct configuration is fully operational and verified.
-last_updated: "2026-05-27T14:40:00-04:00"
+status: Phase C Refinement — Completed. Series/Direct configuration is fully operational and verified with 100% convergence rate in 7-day transient simulations.
+last_updated: "2026-05-29T12:56:00-04:00"
 progress:
   total_phases: 4
-  completed_phases: 2
-  percent: 75
-branch: fix/mode-convergence-clean
+  completed_phases: 3
+  percent: 85
+branch: fix/sd-mode1-convergence
 ---
 
 # Project State

@@ -204,7 +204,16 @@ def test_series_direct_mode3_analytical_mixing(base_params):
     solver.solar_system.hot_tes.profile = np.ones(20) * 540.0
     solver.solar_system.cold_tes.profile = np.ones(20) * 440.0
     
+    # Rebuild the Mode 3 network on the current system before iterating.
+    # After initialize_modes(), the system is left in the last design mode;
+    # set_operation_mode ensures conn_04, discharge_tes_hx etc. exist.
+    solver.solar_system.set_operation_mode(
+        TESmode='3', current_irr=0,
+        profile=solver.solar_system.hot_tes.profile,
+        prev_TES_lay='Charge', mode='offdesign')
+    
     # Run offdesign step using analytical mixing
+    solver.current_irr = 0
     iter_info = solver._iterate_tes_coupling(mode='offdesign', system=solver.solar_system,
                                              TESmode='3', design_path='base_design_4', Tamb=20.0)
     
@@ -215,3 +224,4 @@ def test_series_direct_mode3_analytical_mixing(base_params):
     # Check that mixed temperature is exactly 520C (since T_hot = 540 >= 520 and T_cold = 440 < 520)
     T_mix = solver.solar_system.conn_04.T.val
     assert abs(T_mix - 520.0) < 1e-3
+

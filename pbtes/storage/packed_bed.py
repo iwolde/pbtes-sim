@@ -198,9 +198,24 @@ class ThermalEnergyStorage:
         initial_profile = np.clip(np.array(initial_profile), 300.1, 600.0)
         T_in = max(T_in, 300.1)
 
+        # 1. Zero flow guard: profile remains unchanged by fluid convection
+        if mass_flow < 1e-5:
+            self.profile = initial_profile
+            self.init = self.profile
+            self.tout = self.profile[-1]
+            return self.profile
+
         self.init = initial_profile
         self.t_max = max(self.profile.max(), T_in)
         self.t_min = min(self.profile.min(), T_in)
+
+        # 2. Uniform temperature guard: prevents NaN in normalized coordinate scaling
+        if self.t_max - self.t_min < 1e-5:
+            self.profile = np.ones_like(self.xev) * T_in
+            self.init = self.profile
+            self.tout = self.profile[-1]
+            return self.profile
+
         self.eq_params(T_in, mass_flow)
         self.profile = self.calc_solution().reshape((len(self.xev)))*(self.t_max-self.t_min) + self.t_min
         self.init = self.profile

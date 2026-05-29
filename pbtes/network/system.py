@@ -345,10 +345,13 @@ class SolarThermalSystem:
                 self.hot_tank_hx.set_attr(pr1=1.0, pr2=1.0)
         if mode == 1 and hasattr(self, 'cold_tank_hx') and self.cold_tank_hx is not None:
             if getattr(self, 'tank_config', 'indirect') == 'direct':
-                if design_mode == 'design':
-                    self.cold_tank_hx.set_attr(pr=None, Q='var')
-                else:
-                    self.cold_tank_hx.set_attr(pr=1.0, Q='var')
+                # pr=None for BOTH design and offdesign quasi-design:
+                # With all other components at pr=1.0, a closed loop would create a
+                # degenerate Jacobian row (all pressures determined, CycleCloser eq
+                # becomes 0=0). pr=None on cold_tank_hx provides the free pressure
+                # DOF that TESPy needs to build a non-singular matrix.
+                # (pr_cold becomes a component variable that TESPy solves for ~50 bar.)
+                self.cold_tank_hx.set_attr(pr=None, Q='var')
             else:
                 self.cold_tank_hx.set_attr(pr1=1.0, pr2=1.0)
         self.process_hx.set_attr(pr=1.0)
@@ -356,12 +359,18 @@ class SolarThermalSystem:
             self.preheater_hx.set_attr(pr=1.0)
         
         # === BOUNDARY CONDITIONS (always applied) ===
+        # SD Mode 1 (Series/Direct, Mode 1): conn_05.T and conn_06.T are NOT set here.
+        # - conn_05.T is determined by preheater_hx.Q=0 → T05=T_ht_ph (hot tank outlet).
+        # - conn_06.T is a RESULT of the process energy balance (process_hx.Q=PR_Q + known T_in);
+        #   setting it simultaneously with Q would over-constrain the Jacobian (singularity).
+        # - conn_02.T=560°C (PTC outlet) is set in set_operation_mode as the solar anchor.
         # Mode 5: conn_05.T is NOT set here — it is determined implicitly by
-        # preheater_hx.Q=0 (T05=T10) and ttd_l=120 (T10=T13+120=520Â°C).
-        is_sd_m1 = (mode == 1 and getattr(self, 'tank_config', 'indirect') == 'direct' and getattr(self, 'topology', 'Parallel') == 'Series')
+        # preheater_hx.Q=0 (T05=T10) and ttd_l=20K.
+        is_sd_m1 = (mode == 1 and getattr(self, 'tank_config', 'indirect') == 'direct'
+                    and getattr(self, 'topology', 'Parallel') == 'Series')
         if hasattr(self, 'conn_05') and self.conn_05 is not None and mode != 5 and not is_sd_m1:
             self.conn_05.set_attr(T=self.conexion_params['5_T'])
-        if hasattr(self, 'conn_06') and self.conn_06 is not None and not is_m6_par:
+        if hasattr(self, 'conn_06') and self.conn_06 is not None and not is_m6_par and not is_sd_m1:
             self.conn_06.set_attr(T=self.conexion_params['6_T'])
         if not is_m6_par:
             self.process_hx.set_attr(Q=self.component_params['PR_Q'])
@@ -439,17 +448,32 @@ class SolarThermalSystem:
                                 and getattr(self, 'tank_config', 'indirect') == 'direct')
             
             if is_series_direct:
+                # SD Mode 1 — unified design and quasi-design offdesign setup.
+                # DOF: 3 comp vars (Q_hot, Q_cold, pr_cold=None) + 12 conn vars = 15
+                #      required equations: conn_ht_ph.T + conn_10.T + conn_02.T=560
+                #                        + preheater.Q=0 + process.Q=PR_Q
+                #                        + conn_06.p+fluid(structural) = 15 ok
+                # conn_06.T is NEVER set — it is a result of process energy balance.
+                # conn_02.T=560 is the PTC outlet anchor for BOTH design and offdesign;
+                #   mass flow adjusts to maintain this setpoint at different irradiances.
                 self.hot_tes.set_state('charge')
                 self.cold_tes.set_state('charge')
                 hot_bot = self.hot_tes.profile[-1]
                 cold_bot = self.cold_tes.profile[-1]
-                if mode == 'offdesign':
-                    self.conn_ht_ph.set_attr(T=hot_bot)
-                    self.conn_10.set_attr(T=cold_bot)
-                else:
-                    self.conn_ht_ph.set_attr(T=hot_bot)
-                    self.conn_02.set_attr(T=560)
-                    self.conn_10.set_attr(T=cold_bot)
+                self.conn_ht_ph.set_attr(T=hot_bot)
+                self.conn_02.set_attr(T=560)
+                self.conn_10.set_attr(T=cold_bot)
+                self.ptc_field.set_attr(
+                    A=self.component_params['ptc_A'],  # fixed max aperture always
+                    eta_opt=self.component_params['eta_opt'],
+                    aoi=self.component_params.get('ptc_aoi', 0),
+                    doc=self.component_params.get('ptc_doc', 1),
+                    Tamb=self.component_params.get('ptc_tamb', 20),
+                    c_1=self.component_params.get('ptc_c_1', 0),
+                    c_2=self.component_params.get('ptc_c_2', 0),
+                    iam_1=self.component_params.get('ptc_iam_1', 0),
+                    iam_2=self.component_params.get('ptc_iam_2', 0),
+                    E=(self.component_params['ptc_E'] if mode == 'design' else current_irr))
             else:
                 self.tes.set_state('charge')
                 TES_bot = self.tes.profile[-1]
@@ -462,26 +486,28 @@ class SolarThermalSystem:
             if mode == 'design':
                 if not is_series_direct:
                     self.conn_05.set_attr(T=self.conexion_params['5_T'])
-                self.conn_06.set_attr(T=self.conexion_params['6_T'])
-                if getattr(self, 'topology', 'Parallel') == 'Series':
+                    self.conn_06.set_attr(T=self.conexion_params['6_T'])
+                # SD M1: conn_05.T and conn_06.T intentionally not set (see create_network).
+                # For non-SD Series topology with indirect tank:
+                if getattr(self, 'topology', 'Parallel') == 'Series' and not is_series_direct:
                     self.ptc_field.set_attr(A='var')
             else:
-                self.ptc_field.set_attr(
-                    E=current_irr, A=self.component_params['ptc_A'],
-                    eta_opt=self.component_params['eta_opt'],
-                    aoi=self.component_params.get('ptc_aoi', 0),
-                    doc=self.component_params.get('ptc_doc', 1),
-                    Tamb=self.component_params.get('ptc_tamb', 20),
-                    c_1=self.component_params.get('ptc_c_1', 0),
-                    c_2=self.component_params.get('ptc_c_2', 0),
-                    iam_1=self.component_params.get('ptc_iam_1', 0),
-                    iam_2=self.component_params.get('ptc_iam_2', 0))
-                if getattr(self, 'topology', 'Parallel') == 'Series':
-                    self.process_hx.set_attr(Q=None)
-                    if hasattr(self, 'ptc_field_A_designed'):
-                        self.ptc_field.set_attr(A=self.ptc_field_A_designed)
-                else:
-                    pass
+                if not is_series_direct:
+                    # Non-SD configs: PTC output adjusts mass flow, Q=PR_Q pins process
+                    self.ptc_field.set_attr(
+                        E=current_irr, A=self.component_params['ptc_A'],
+                        eta_opt=self.component_params['eta_opt'],
+                        aoi=self.component_params.get('ptc_aoi', 0),
+                        doc=self.component_params.get('ptc_doc', 1),
+                        Tamb=self.component_params.get('ptc_tamb', 20),
+                        c_1=self.component_params.get('ptc_c_1', 0),
+                        c_2=self.component_params.get('ptc_c_2', 0),
+                        iam_1=self.component_params.get('ptc_iam_1', 0),
+                        iam_2=self.component_params.get('ptc_iam_2', 0))
+                    if getattr(self, 'topology', 'Parallel') == 'Series':
+                        self.process_hx.set_attr(Q=None)
+                        if hasattr(self, 'ptc_field_A_designed'):
+                            self.ptc_field.set_attr(A=self.ptc_field_A_designed)
         
         elif TESmode == '2':
             # All flow from PTC to process

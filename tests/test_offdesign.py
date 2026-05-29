@@ -54,20 +54,28 @@ def design_then_offdesign(mode, e_values, **kwargs):
     sys_d.solve_network(mode='design', TESmode=str(mode))
 
     # Offdesign with variable E
+    sys_o = None
     for e in e_values:
-        sys_o = SolarThermalSystem(tes_params=TES_P, component_params=COMP_P, conexion_params=CONN_P,
-                                    HTF='INCOMP::NaK', topology='Parallel', tank_config='indirect')
-        if mode == 6:
-            sys_o.charge_hx_kA = 150213
-        if mode == 3:
-            sys_o.set_operation_mode(TESmode='3', current_irr=0, profile=np.ones(20) * 540,
-                                      prev_TES_lay='Charge', mode='offdesign')
-            if hasattr(sys_o, 'conn_15'):
-                sys_o.conn_15.set_attr(T=540)
+        if sys_o is None:
+            sys_o = SolarThermalSystem(tes_params=TES_P, component_params=COMP_P, conexion_params=CONN_P,
+                                        HTF='INCOMP::NaK', topology='Parallel', tank_config='indirect')
+            if mode == 6:
+                sys_o.charge_hx_kA = 150213
+            if mode == 3:
+                sys_o.set_operation_mode(TESmode='3', current_irr=0, profile=np.ones(20) * 540,
+                                          prev_TES_lay='Charge', mode='offdesign')
+                if hasattr(sys_o, 'conn_15'):
+                    sys_o.conn_15.set_attr(T=540)
+            else:
+                sys_o.set_operation_mode(TESmode=str(mode), current_irr=e, profile=profile,
+                                          prev_TES_lay='Charge', mode='offdesign')
+            sys_o.solve_network(mode='offdesign', TESmode=str(mode), use_init_path=True)
         else:
-            sys_o.set_operation_mode(TESmode=str(mode), current_irr=e, profile=profile,
-                                      prev_TES_lay='Charge', mode='offdesign')
-        sys_o.solve_network(mode='offdesign', TESmode=str(mode), use_init_path=True)
+            if mode != 3:
+                sys_o.ptc_field.set_attr(E=e)
+                sys_o.solve_network(mode='offdesign', TESmode=str(mode), use_init_path=False)
+            else:
+                sys_o.solve_network(mode='offdesign', TESmode=str(mode), use_init_path=False)
         q = sys_o.ptc_field.Q.val / 1e6 if hasattr(sys_o, 'ptc_field') else 0
         results.append(q)
     return results

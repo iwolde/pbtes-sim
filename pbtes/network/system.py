@@ -479,7 +479,26 @@ class SolarThermalSystem:
                 TES_bot = self.tes.profile[-1]
                 if getattr(self, 'tank_config', 'indirect') == 'indirect':
                     self.conn_13.set_attr(T=TES_bot)
-                    self.conn_14.set_attr(T=TES_bot + 40)
+                    if mode == 'design':
+                        self.conn_14.set_attr(T=TES_bot + 40)
+                    else:
+                        m_val = getattr(self, 'tes_charge_m', None)
+                        if m_val is None:
+                            import os, pandas as pd
+                            csv_path = os.path.join('.tespy_cache', f'base_design_{TESmode}', 'connections.csv')
+                            if os.path.exists(csv_path):
+                                try:
+                                    df = pd.read_csv(csv_path, sep=';', index_col=0)
+                                    if '13_CHSC_CHX' in df.index:
+                                        m_val = float(df.loc['13_CHSC_CHX', 'm'])
+                                        self.tes_charge_m = m_val
+                                except Exception as err:
+                                    print(f"[DEBUG error reading csv]: {err}")
+                                    pass
+                            if m_val is None:
+                                m_val = 3.0
+                        self.conn_13.set_attr(m=m_val)
+                        self.conn_14.set_attr(T=None)
             
             self.preheater_hx.set_attr(Q=0)
             
@@ -576,8 +595,25 @@ class SolarThermalSystem:
                 
             if getattr(self, 'tank_config', 'indirect') == 'indirect':
                 self.conn_13.set_attr(T=TES_bot)
-                # Set target TES return temperature for design and offdesign
-                self.conn_14.set_attr(T=TES_bot + 40)
+                if mode == 'design':
+                    self.conn_14.set_attr(T=TES_bot + 40)
+                else:
+                    m_val = getattr(self, 'tes_charge_m', None)
+                    if m_val is None:
+                        import os, pandas as pd
+                        csv_path = os.path.join('.tespy_cache', f'base_design_{TESmode}', 'connections.csv')
+                        if os.path.exists(csv_path):
+                            try:
+                                df = pd.read_csv(csv_path, sep=';', index_col=0)
+                                if '13_CHSC_CHX' in df.index:
+                                    m_val = float(df.loc['13_CHSC_CHX', 'm'])
+                                    self.tes_charge_m = m_val
+                            except Exception:
+                                pass
+                        if m_val is None:
+                            m_val = 3.0
+                    self.conn_13.set_attr(m=m_val)
+                    self.conn_14.set_attr(T=None)
             else:
                 self.conn_10.set_attr(T=TES_bot)
             
@@ -609,7 +645,25 @@ class SolarThermalSystem:
             if is_m6par:
                 if getattr(self, 'tank_config', 'indirect') == 'indirect':
                     self.conn_13.set_attr(T=TES_bot)
-                    self.conn_14.set_attr(T=TES_bot + 40)
+                    if mode == 'design':
+                        self.conn_14.set_attr(T=TES_bot + 40)
+                    else:
+                        m_val = getattr(self, 'tes_charge_m', None)
+                        if m_val is None:
+                            import os, pandas as pd
+                            csv_path = os.path.join('.tespy_cache', f'base_design_{TESmode}', 'connections.csv')
+                            if os.path.exists(csv_path):
+                                try:
+                                    df = pd.read_csv(csv_path, sep=';', index_col=0)
+                                    if '13_CHSC_CHX' in df.index:
+                                        m_val = float(df.loc['13_CHSC_CHX', 'm'])
+                                        self.tes_charge_m = m_val
+                                except Exception:
+                                    pass
+                            if m_val is None:
+                                m_val = 3.0
+                        self.conn_13.set_attr(m=m_val)
+                        self.conn_14.set_attr(T=None)
                 self.conn_02.set_attr(T=560)  # Constrain PTC outlet for high-T charge
                 if mode == 'design':
                     self.ptc_field.set_attr(

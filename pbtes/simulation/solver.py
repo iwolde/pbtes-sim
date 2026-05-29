@@ -200,8 +200,9 @@ class Solver:
             min_dt_mode1 = 30.0
             charge_viable = (T_ptc_est > TES_top + min_dt_mode1)
             if self.tank_config == 'indirect':
+                T_charge_in = t_ph_out if self.topology == 'Parallel' else t_proc_set
                 tes_cold_side = TES_profile[-1] if prev_TES_lay == 'Charge' else TES_profile[0]
-                if T_ptc_est - tes_cold_side < min_dt_mode1:
+                if T_charge_in - tes_cold_side < min_dt_mode1:
                     charge_viable = False
             if irr >= self.E_min_mode1 and charge_viable and soc_norm < 0.99:
                 return '1'

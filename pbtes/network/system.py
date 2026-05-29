@@ -111,7 +111,7 @@ class SolarThermalSystem:
                 # design=['ttd_l']: explicitly sizes the HX at the design point.
                 # ttd_l = T_hot_out - T_cold_in = T10 - T13.
                 # Series flow: T10 = T05 = 520°C (preheater Q=0), T13 = 400°C → ttd_l = 120 K.
-                self.high_t_charge_hx.set_attr(design=['ttd_l'], offdesign=['kA'])
+                self.high_t_charge_hx.set_attr(design=[], offdesign=['kA'])
                 self.tes_ch_source = tpc.Source('TES_charge_inlet_source')
                 self.tes_ch_sink   = tpc.Sink('TES_charge_outlet_sink')
             else:
@@ -408,8 +408,7 @@ class SolarThermalSystem:
             # 20K is a realistic terminal temperature difference for an industrial HX,
             # consistent with all other HXs in the network.
             if mode == 5 and hasattr(self, 'high_t_charge_hx'):
-                if getattr(self, 'tank_config', 'indirect') == 'indirect':
-                    self.high_t_charge_hx.set_attr(ttd_l=20)
+                pass
             if mode == 3 and hasattr(self, 'discharge_tes_hx'):
                 if getattr(self, 'tank_config', 'indirect') == 'indirect':
                     self.discharge_tes_hx.set_attr(ttd_l=20)

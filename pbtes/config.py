@@ -54,7 +54,7 @@ class TESConfig:
     h_conv_natural: float = 4.0       # W/(m²·K) — natural convection outside tank
 
     # ── Initial condition ──────────────────────────────────────────────
-    initial_temperature: float = 490.0  # °C — uniform initial T profile
+    initial_temperature: float = 400.0  # °C — uniform initial T profile
 
     # ── Design-point ranges (parametric sweeps) ────────────────────────
     range_tank_height: Tuple[float, float] = (2.0, 10.0)   # m

@@ -24,6 +24,7 @@ network solving and a 1D Schumann model for the packed bed.
 |----------|---------|
 | `.planning/PLANT_LAYOUTS_AND_MODES.md` | **Ground truth** for operating modes, layouts, and component roles |
 | `insumos paper/PROJECT_CONTEXT.md` | Full project reference (parameters, workflow, results format) |
+| `insumos paper/PHYSICS_METHODOLOGY.md` | Mathematical models, layout sizing, and offdesign coupling physics |
 | `insumos paper/zinc_pool_model_methodology.md` | Zinc pool physics and coupling |
 | `pbtes/config.py` | Single source of truth for ALL numeric parameters |
 | `TODO.md` | Current task list — update when completing items |
@@ -87,6 +88,7 @@ codigos/
 │
 ├── insumos paper/                ← paper context & methodology docs
 │   ├── PROJECT_CONTEXT.md        ← full project reference
+│   ├── PHYSICS_METHODOLOGY.md    ← detailed physical modeling & coupling methodology
 │   └── zinc_pool_model_methodology.md
 │
 ├── results/                      ← simulation output CSVs (gitignored)

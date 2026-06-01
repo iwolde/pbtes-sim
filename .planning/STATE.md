@@ -1,13 +1,13 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.3
-milestone_name: Production Runs & Figures
-status: Phase C Refinement — Completed. All configurations (including Parallel Indirect baseline, Series Direct, Parallel Direct, and Series Indirect) are fully operational and verified with 100% convergence rate in 7-day transient simulations and a 100% test pass rate.
-last_updated: "2026-05-29T13:08:00-04:00"
+milestone: v1.4
+milestone_name: Production Runs & Exergoeconomics
+status: Phase C Refinement — Fully Completed & Refined. All layouts (Parallel Indirect baseline, Series Direct, Parallel Direct, Series Indirect) are 100% operational. Verified transient charging recovery (SD Mode 1) and indirect discharge (PI Mode 3) in 90-day seasonal simulations (Jan–Mar). All 91 tests pass perfectly.
+last_updated: "2026-06-01T16:10:00-04:00"
 progress:
   total_phases: 4
   completed_phases: 3
-  percent: 88
+  percent: 92
 branch: main
 ---
 
@@ -52,6 +52,7 @@ See `TODO.md` for the active checklist.
 |----------|----------|--------|
 | Operating modes (ground truth) | `.planning/PLANT_LAYOUTS_AND_MODES.md` | Current (v3.0) |
 | Project context | `insumos paper/PROJECT_CONTEXT.md` | Current |
+| Physics & coupling methodology | `insumos paper/PHYSICS_METHODOLOGY.md` | Current |
 | Zinc pool methodology | `insumos paper/zinc_pool_model_methodology.md` | Current |
 | Task list | `TODO.md` | Active |
 | Agent instructions | `AGENTS.md` | Current (2026-05-21) |

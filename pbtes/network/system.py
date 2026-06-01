@@ -111,7 +111,7 @@ class SolarThermalSystem:
                 # design=['ttd_l']: explicitly sizes the HX at the design point.
                 # ttd_l = T_hot_out - T_cold_in = T10 - T13.
                 # Series flow: T10 = T05 = 520°C (preheater Q=0), T13 = 400°C → ttd_l = 120 K.
-                self.high_t_charge_hx.set_attr(design=[], offdesign=['kA'])
+                self.high_t_charge_hx.set_attr(design=['ttd_l'], offdesign=['kA'])
                 self.tes_ch_source = tpc.Source('TES_charge_inlet_source')
                 self.tes_ch_sink   = tpc.Sink('TES_charge_outlet_sink')
             else:
@@ -408,7 +408,8 @@ class SolarThermalSystem:
             # 20K is a realistic terminal temperature difference for an industrial HX,
             # consistent with all other HXs in the network.
             if mode == 5 and hasattr(self, 'high_t_charge_hx'):
-                pass
+                if getattr(self, 'tank_config', 'indirect') == 'indirect':
+                    self.high_t_charge_hx.set_attr(ttd_l=20.0)
             if mode == 3 and hasattr(self, 'discharge_tes_hx'):
                 if getattr(self, 'tank_config', 'indirect') == 'indirect':
                     self.discharge_tes_hx.set_attr(ttd_l=20)
@@ -473,6 +474,17 @@ class SolarThermalSystem:
                     iam_1=self.component_params.get('ptc_iam_1', 0),
                     iam_2=self.component_params.get('ptc_iam_2', 0),
                     E=(self.component_params['ptc_E'] if mode == 'design' else current_irr))
+                
+                # Adaptive auxiliary heating for SD Mode 1:
+                # If the hot tank outlet (hot_bot) is below the process inlet target (520°C),
+                # allow the auxiliary preheater to top up the temperature by setting Q='var'
+                # and fixing conn_05.T to 520°C. Otherwise, run solar-only (Q=0).
+                if hot_bot >= 520.0:
+                    self.preheater_hx.set_attr(Q=0)
+                    self.conn_05.set_attr(T=None)
+                else:
+                    self.preheater_hx.set_attr(Q='var')
+                    self.conn_05.set_attr(T=self.conexion_params['5_T'])
             else:
                 self.tes.set_state('charge')
                 TES_bot = self.tes.profile[-1]
@@ -499,7 +511,8 @@ class SolarThermalSystem:
                         self.conn_13.set_attr(m=m_val)
                         self.conn_14.set_attr(T=None)
             
-            self.preheater_hx.set_attr(Q=0)
+            if not is_series_direct:
+                self.preheater_hx.set_attr(Q=0)
             
             if mode == 'design':
                 if not is_series_direct:
@@ -559,23 +572,44 @@ class SolarThermalSystem:
             from tespy.connections import Ref
             self.create_network(mode=3, design_mode=mode)
             self.tes.set_state('discharge')
+            if mode == 'design':
+                if getattr(self, 'tank_config', 'indirect') == 'indirect':
+                    self.preheater_hx.set_attr(Q=0)
             
             if getattr(self, 'tank_config', 'indirect') == 'indirect':
                 TES_top = profile[0] if prev_TES_lay == 'Charge' else profile[-1]
                 self.conn_15.set_attr(T=TES_top)
-                self.conn_04.set_attr(T=Ref(self.conn_15, 1, -20))   # T04 = T15 - 20
+                self.conn_04.set_attr(T=None)
                 self.conn_16.set_attr(T=None)
+                
+                # Propagate designed kA and mass flow for offdesign simulation
+                if mode != 'design':
+                    if hasattr(self, 'discharge_hx_kA') and self.discharge_hx_kA is not None:
+                        self.discharge_tes_hx.set_attr(kA=self.discharge_hx_kA)
+                    m_val = getattr(self, 'tes_charge_m', None)
+                    if m_val is not None:
+                        self.conn_15.set_attr(m=m_val)
+                    else:
+                        self.conn_15.set_attr(m=None)
+                else:
+                    self.conn_15.set_attr(m=None)
             else:
                 TES_top = profile[-1] if prev_TES_lay == 'Discharge' else profile[0]
                 self.conn_04.set_attr(T=TES_top)
+            
             self.conn_11.set_attr(T=None)
             
-            # Regime selection (offdesign only)
+            # Regime selection and guesses (offdesign only)
             if mode != 'design':
                 t_ph_out = self.conexion_params['5_T']
                 if TES_top >= t_ph_out:
                     self.conn_05.set_attr(T=None)
                     self.preheater_hx.set_attr(Q=0)
+                else:
+                    self.conn_05.set_attr(T=t_ph_out)
+                    self.preheater_hx.set_attr(Q='var')
+                # Warm-start guess for CC->DHX to aid solver convergence
+                self.conn_11.set_attr(T0=self.conexion_params['6_T'])
 
         elif TESmode == '4':
             self.create_network(mode=4, design_mode=mode)
@@ -855,6 +889,10 @@ class SolarThermalSystem:
             if (TESmode == '5' and hasattr(self, 'high_t_charge_hx')
                     and self.high_t_charge_hx.kA.val is not None):
                 self.charge_hx_kA = self.high_t_charge_hx.kA.val
+            if (TESmode == '3' and hasattr(self, 'discharge_tes_hx')
+                    and getattr(self, 'tank_config', 'indirect') == 'indirect'
+                    and self.discharge_tes_hx.kA.val is not None):
+                self.discharge_hx_kA = self.discharge_tes_hx.kA.val
         else:
             design_path_full = os.path.join(base_dir, f'base_design_{TESmode}')
             if use_init_path:

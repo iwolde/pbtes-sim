@@ -48,9 +48,12 @@ class Solver:
         self.E_min_charge  = self.E_min_process * charge_margin
         self.charge_margin = charge_margin
         # Mode 1 fires when solar can serve process AND charge TES with meaningful surplus.
-        # Needs ~10% margin above E_min_charge for reliable offdesign convergence
-        # (LMTD singularity at low heat loads). Also floor at 600 W/m2 for kA stability.
-        self.E_min_mode1   = max(self.E_min_charge * 1.1, 600.0)
+        # PI (Parallel/indirect) needs ~10% margin above E_min_charge for reliable offdesign HX convergence.
+        # SD (Series/direct) topology has simpler/direct charging and converges easily, so no extra margin is needed.
+        if self.topology == 'Parallel':
+            self.E_min_mode1 = max(self.E_min_charge * 1.1, 600.0)
+        else:
+            self.E_min_mode1 = max(self.E_min_charge, 600.0)
         # ---
         
         # --- Zinc pool (optional dynamic process model) ---
@@ -197,7 +200,7 @@ class Solver:
             E_design = self.component_params.get('ptc_E', 900.0)
             irr_frac = min(irr / E_design, 1.2)
             T_ptc_est = T_in_nom + irr_frac * (T_out_design - T_in_nom)
-            min_dt_mode1 = 30.0
+            min_dt_mode1 = 65.0 if self.topology == 'Parallel' else 30.0
             charge_viable = (T_ptc_est > TES_top + min_dt_mode1)
             if self.tank_config == 'indirect':
                 T_charge_in = t_ph_out if self.topology == 'Parallel' else t_proc_set
@@ -304,7 +307,7 @@ class Solver:
         
         # ---- Mode 3 (discharge) ----
         self.irr = 0
-        sys3 = _make_system(540)
+        sys3 = _make_system(540)  # Design at 540°C is thermodynamically required to prevent negative TTD
         # Set design TES discharge flow (same order of magnitude as charge)
         if self.charge_tes_m_design is not None:
             sys3.tes_charge_m = self.charge_tes_m_design
@@ -315,6 +318,9 @@ class Solver:
             sys3.conn_15.set_attr(T=540)
         sys3.solve_network(mode='design', TESmode='3')
         self.solar_system = sys3
+        self.discharge_hx_kA = getattr(sys3, 'discharge_hx_kA', None)
+        ka_dis_str = f"{self.discharge_hx_kA:.1f}" if self.discharge_hx_kA is not None else "None"
+        print(f'[Mode 3 design] discharge kA={ka_dis_str}')
         try:
             if hasattr(sys3, 'conn_15'):
                 self.discharge_tes_m_design = sys3.conn_15.m.val
@@ -668,6 +674,7 @@ class Solver:
                 system.conn_15.set_attr(T=T_in_top)
 
         mode_3_fail = False
+        dT_dhx = 0
         is_direct_m3 = (TESmode == '3' and tank_cfg == 'direct')
         if is_series_direct_m1 or is_direct_m3:
             old_hot_profile = np.array(system.hot_tes.profile).copy()
@@ -1227,6 +1234,10 @@ class Solver:
                                     topology=self.topology,
                                     tank_config=self.tank_config
                                     )
+        if hasattr(self, 'charge_hx_kA') and self.charge_hx_kA is not None:
+            self.solar_system.charge_hx_kA = self.charge_hx_kA
+        if hasattr(self, 'discharge_hx_kA') and self.discharge_hx_kA is not None:
+            self.solar_system.discharge_hx_kA = self.discharge_hx_kA
         self.solar_system.create_network(mode=4)
         self.results = []
         

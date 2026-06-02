@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Production Runs & Exergoeconomics
-status: Phase C Refinement — Fully Completed & Refined. All layouts (Parallel Indirect baseline, Series Direct, Parallel Direct, Series Indirect) are 100% operational. Verified transient charging recovery (SD Mode 1) and indirect discharge (PI Mode 3) in 90-day seasonal simulations (Jan–Mar). All 91 tests pass perfectly.
-last_updated: "2026-06-01T16:10:00-04:00"
+status: Phase C Refinement — Refined Mode 1 and Mode 6 design pre-calculations and off-design counter-flow NTU initial guess seeding. The Parallel/Indirect layout is now 100% robust across arbitrary PTC aperture areas (verified with 500 to 3000 m2). A 7-day NaK simulation with A=2000 m2 converged flawlessly, achieving 56.1% solar fraction with active charging/discharging.
+last_updated: "2026-06-02T16:37:00-04:00"
 progress:
   total_phases: 4
   completed_phases: 3
-  percent: 92
-branch: main
+  percent: 95
+branch: feature/winter-logic-and-aux-heaters
 ---
 
 # Project State

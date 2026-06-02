@@ -781,9 +781,107 @@ class SolarThermalSystem:
             and '09_SP1_CHX' in active_labels
         )
         
+        custom_guesses = None
+        if is_mode1_parallel:
+            try:
+                # Find design mass flows
+                m_ptc_design = float(df.loc['02_PTC_SP1', 'm'])
+                m_process_design = float(df.loc['04_SP1_PH', 'm'])
+                m_charge_design = float(df.loc['09_SP1_CHX', 'm'])
+                
+                # Get current storage bottom temperature (cold-side inlet)
+                if hasattr(self, 'conn_13') and self.conn_13 is not None and self.conn_13.T.val is not None:
+                    T_cold_in = float(self.conn_13.T.val)
+                elif hasattr(self, 'tes') and self.tes is not None and self.tes.profile is not None:
+                    T_cold_in = float(self.tes.profile[-1])
+                else:
+                    T_cold_in = 450.0
+                
+                # Estimate hot-side charging mass flow based on irradiance scaling
+                E_design = self.component_params.get('ptc_E', 900.0)
+                A_ptc = self.component_params.get('ptc_A', 1500.0)
+                eta_opt = self.component_params.get('eta_opt', 0.816)
+                Q_ptc_est = A_ptc * current_irr * eta_opt
+                Q_proc_val = abs(self.component_params.get('PR_Q', 450000.0))
+                Q_charge_est = max(10000.0, Q_ptc_est - Q_proc_val)
+                
+                m_process_guess = m_process_design
+                m_charge_guess = Q_charge_est / (960.0 * 50.0)
+                m_charge_guess = max(0.5, min(m_charge_guess, 100.0))
+                m_ptc_guess = m_process_guess + m_charge_guess
+                
+                # Counter-flow NTU effectiveness model for charge_tes_hx
+                kA = getattr(self, 'charge_hx_kA', None)
+                if kA is None:
+                    kA = 20000.0
+                
+                m_cold = getattr(self, 'tes_charge_m', None)
+                if m_cold is None:
+                    m_cold = float(df.loc['13_CHSC_CHX', 'm'])
+                m_cold = max(0.5, m_cold)
+                
+                m_hot = m_charge_guess
+                cp = 960.0
+                C_h = m_hot * cp
+                C_c = m_cold * cp
+                C_min = min(C_h, C_c)
+                C_max = max(C_h, C_c)
+                C_r = C_min / C_max
+                
+                NTU = kA / C_min
+                import numpy as np
+                if C_r < 0.999:
+                    exp_val = np.exp(-NTU * (1.0 - C_r))
+                    eff = (1.0 - exp_val) / (1.0 - C_r * exp_val)
+                else:
+                    eff = NTU / (NTU + 1.0)
+                
+                T_hot_in = 520.0
+                Q_transfer = eff * C_min * (T_hot_in - T_cold_in)
+                T_hot_out_est = T_hot_in - Q_transfer / C_h
+                T_cold_out_est = T_cold_in + Q_transfer / C_c
+                
+                T_hot_out_est = max(T_cold_in + 2.0, min(T_hot_out_est, T_hot_in - 2.0))
+                T_cold_out_est = max(T_cold_in + 2.0, min(T_cold_out_est, T_hot_in - 2.0))
+                
+                T10_guess = T_hot_out_est
+                T14_guess = T_cold_out_est
+                
+                T_merge_guess = (m_process_guess * 480.0 + m_charge_guess * T10_guess) / m_ptc_guess
+                
+                custom_guesses = {
+                    '01_CC_PTC': {'m': m_ptc_guess, 'T': T_merge_guess},
+                    '02_PTC_SP1': {'m': m_ptc_guess, 'T': T_hot_in},
+                    '04_SP1_PH': {'m': m_process_guess, 'T': T_hot_in},
+                    '05_PH_PR': {'m': m_process_guess, 'T': T_hot_in},
+                    '06_PR_MG2': {'m': m_process_guess, 'T': 480.0},
+                    '08_MG2_CC': {'m': m_ptc_guess, 'T': T_merge_guess},
+                    '09_SP1_CHX': {'m': m_charge_guess, 'T': T_hot_in},
+                    '10_CHX_MG2': {'m': m_charge_guess, 'T': T10_guess},
+                    '13_CHSC_CHX': {'m': m_cold, 'T': T_cold_in},
+                    '14_CHX_CHSK': {'m': m_cold, 'T': T14_guess},
+                }
+            except Exception as e:
+                print(f"[DEBUG _apply_design_guesses error]: {e}")
+                custom_guesses = None
+
+        secondary_labels = set()
+        # conn_04, conn_05, conn_06 are process loop conns
+        for cname in ['conn_04', 'conn_05', 'conn_06', 'conn_15', 'conn_16']:
+            c = getattr(self, cname, None)
+            if c and hasattr(c, 'label'):
+                secondary_labels.add(str(c.label))
+                
+        # charging labels that scale with m_charge_scale
+        charge_labels = set()
+        for cname in ['conn_09', 'conn_10', 'conn_13', 'conn_14']:
+            c = getattr(self, cname, None)
+            if c and hasattr(c, 'label'):
+                charge_labels.add(str(c.label))
+
         m_charge_scale = m_scale
         T10_guess = None
-        if is_mode1_parallel:
+        if not is_mode1_parallel or custom_guesses is None:
             try:
                 # Find design mass flows
                 m_ptc_design = float(df.loc['02_PTC_SP1', 'm'])
@@ -823,19 +921,8 @@ class SolarThermalSystem:
             except Exception:
                 m_charge_scale = m_scale
 
-        secondary_labels = set()
-        # conn_04, conn_05, conn_06 are process loop conns
-        for cname in ['conn_04', 'conn_05', 'conn_06', 'conn_15', 'conn_16']:
-            c = getattr(self, cname, None)
-            if c and hasattr(c, 'label'):
-                secondary_labels.add(str(c.label))
-                
-        # charging labels that scale with m_charge_scale
-        charge_labels = set()
-        for cname in ['conn_09', 'conn_10', 'conn_13', 'conn_14']:
-            c = getattr(self, cname, None)
-            if c and hasattr(c, 'label'):
-                charge_labels.add(str(c.label))
+        def _T_to_h(T):
+            return 594.37 + 1.5233 * (T - 420.0)
 
         for name in dir(self):
             if not name.startswith('conn_'):
@@ -852,14 +939,19 @@ class SolarThermalSystem:
                 h0 = float(row.get('h', 700))
                 T0 = float(row.get('T', 500))
                 
-                if str(label) == '10_CHX_MG2' and T10_guess is not None:
-                    T0 = T10_guess
-                    h0 = 594.37 + 1.5233 * (T0 - 420.0)
-                
-                if str(label) in charge_labels:
-                    m0 = m0 * m_charge_scale
-                elif str(label) not in secondary_labels:
-                    m0 = m0 * m_scale
+                if custom_guesses is not None and str(label) in custom_guesses:
+                    m0 = custom_guesses[str(label)]['m']
+                    T0 = custom_guesses[str(label)]['T']
+                    h0 = _T_to_h(T0)
+                else:
+                    if str(label) == '10_CHX_MG2' and T10_guess is not None:
+                        T0 = T10_guess
+                        h0 = _T_to_h(T0)
+                    
+                    if str(label) in charge_labels:
+                        m0 = m0 * m_charge_scale
+                    elif str(label) not in secondary_labels:
+                        m0 = m0 * m_scale
                     
                 conn.set_attr(m0=m0, h0=h0, T0=T0)
             except Exception:

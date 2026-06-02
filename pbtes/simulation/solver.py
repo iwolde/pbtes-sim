@@ -50,7 +50,10 @@ class Solver:
         # Mode 1 fires when solar can serve process AND charge TES with meaningful surplus.
         # PI (Parallel/indirect) needs ~10% margin above E_min_charge for reliable offdesign HX convergence.
         # SD (Series/direct) topology has simpler/direct charging and converges easily, so no extra margin is needed.
-        if self.topology == 'Parallel':
+        if self.topology == 'Parallel' and self.tank_config == 'indirect':
+            E_min_mode1_calc = (Q_proc + 48000.0) / (A_ptc * eta_opt)
+            self.E_min_mode1 = max(E_min_mode1_calc, 400.0)
+        elif self.topology == 'Parallel':
             self.E_min_mode1 = max(self.E_min_charge * 1.1, 600.0)
         else:
             self.E_min_mode1 = max(self.E_min_charge, 600.0)
@@ -59,6 +62,12 @@ class Solver:
         # --- Zinc pool (optional dynamic process model) ---
         self.zinc_pool = ZincPool(zinc_pool_params) if zinc_pool_params is not None else None
         # ---
+
+        # --- Winter Logic & Tank Heaters ───
+        T_set_prod = self.tes_params.get('T_set_tank_production', 450.0)
+        T_set_wint = self.tes_params.get('T_set_tank_winter', 300.1)
+        from pbtes.simulation.winter_logic import WinterLogic
+        self.winter_logic = WinterLogic(T_set_production=T_set_prod, T_set_winter=T_set_wint)
 
         print(f'Control thresholds: E_min_process={self.E_min_process:.0f} W/m2, '
               f'E_min_charge={self.E_min_charge:.0f} W/m2, '
@@ -200,7 +209,12 @@ class Solver:
             E_design = self.component_params.get('ptc_E', 900.0)
             irr_frac = min(irr / E_design, 1.2)
             T_ptc_est = T_in_nom + irr_frac * (T_out_design - T_in_nom)
-            min_dt_mode1 = 65.0 if self.topology == 'Parallel' else 30.0
+            if self.topology == 'Parallel' and self.tank_config == 'indirect':
+                min_dt_mode1 = 35.0
+            elif self.topology == 'Parallel':
+                min_dt_mode1 = 65.0
+            else:
+                min_dt_mode1 = 30.0
             charge_viable = (T_ptc_est > TES_top + min_dt_mode1)
             if self.tank_config == 'indirect':
                 T_charge_in = t_ph_out if self.topology == 'Parallel' else t_proc_set
@@ -281,12 +295,74 @@ class Solver:
         # ---- Mode 1 (charge + process, computes kA) ----
         self.system_mode = 'Full'; self.TES_lay = 'Charge'; self.irr = 1000
         is_series_direct = (self.tank_config == 'direct' and self.topology == 'Series')
+        
+        # Save original process heat demand
+        q_proc_orig = self.component_params['PR_Q']
+        is_pi = (self.topology == 'Parallel' and self.tank_config == 'indirect')
+        
+        if is_pi:
+            A_ptc = self.component_params['ptc_A']
+            E_design = self.component_params.get('ptc_E', 900.0)
+            eta_opt = self.component_params.get('eta_opt', 0.816)
+            Q_ptc_design = A_ptc * E_design * eta_opt
+            q_proc_design = -min(abs(q_proc_orig), 0.6 * Q_ptc_design)
+            self.component_params['PR_Q'] = q_proc_design
+            print(f"[Mode 1 precalculation] Original process Q: {q_proc_orig/1e3:.1f} kW, Design process Q: {q_proc_design/1e3:.1f} kW (Q_ptc_design = {Q_ptc_design/1e3:.1f} kW)")
+        
         sys1 = _make_system(450)  # Design at warmer T_bot for better offdesign CHX DT
         if is_series_direct:
             sys1.hot_tes.profile = np.ones(20) * 520.0
             sys1.cold_tes.profile = np.ones(20) * 440.0
+            
+        if is_pi:
+            # Expected design-point temperatures and flows for Parallel/Indirect design convergence
+            T_hot_in = 520.0
+            T_cold_in = 450.0
+            T10_guess = 470.0
+            T14_guess = 490.0
+            
+            m_process_guess = abs(q_proc_design) / (960.0 * 40.0)
+            m_charge_guess = (Q_ptc_design - abs(q_proc_design)) / (960.0 * 50.0)
+            m_charge_guess = max(0.5, m_charge_guess)
+            m_ptc_guess = m_process_guess + m_charge_guess
+            m_secondary_guess = (Q_ptc_design - abs(q_proc_design)) / (960.0 * 40.0)
+            m_secondary_guess = max(0.5, m_secondary_guess)
+            
+            def _T_to_h(T):
+                return 594.37 + 1.5233 * (T - 420.0)
+            
+            T_merge_guess = (m_process_guess * 480.0 + m_charge_guess * T10_guess) / m_ptc_guess
+            
+            design_guesses = {
+                'conn_01': {'m': m_ptc_guess, 'T': T_merge_guess},
+                'conn_02': {'m': m_ptc_guess, 'T': T_hot_in},
+                'conn_04': {'m': m_process_guess, 'T': T_hot_in},
+                'conn_05': {'m': m_process_guess, 'T': T_hot_in},
+                'conn_06': {'m': m_process_guess, 'T': 480.0},
+                'conn_08': {'m': m_ptc_guess, 'T': T_merge_guess},
+                'conn_09': {'m': m_charge_guess, 'T': T_hot_in},
+                'conn_10': {'m': m_charge_guess, 'T': T10_guess},
+                'conn_13': {'m': m_secondary_guess, 'T': T_cold_in},
+                'conn_14': {'m': m_secondary_guess, 'T': T14_guess},
+            }
+            
+            # Set connections in sys1
+            for conn_name, vals in design_guesses.items():
+                conn = getattr(sys1, conn_name, None)
+                if conn is not None:
+                    h0_val = _T_to_h(vals['T'])
+                    conn.set_attr(m0=vals['m'], T0=vals['T'], h0=h0_val)
+                    # Force values directly to design point attributes to help initial solver steps
+                    conn.m.val = vals['m']
+                    conn.T.val = vals['T']
+                    conn.h.val = h0_val
+            print(f"[Mode 1 precalculation] Set design guesses: m_ptc={m_ptc_guess:.2f} kg/s, m_process={m_process_guess:.2f} kg/s, m_charge={m_charge_guess:.2f} kg/s")
+            
         self.solar_system = sys1
         self.solve_network_steady(TESmode='1')
+        
+        # Restore original process heat demand
+        self.component_params['PR_Q'] = q_proc_orig
         # Store kA for cross-mode use (indirect only) and design TES charge flow for offdesign constraints
         self.charge_hx_kA = getattr(sys1, 'charge_hx_kA', None)
         if not is_series_direct:
@@ -361,6 +437,40 @@ class Solver:
                     profile=sys6.tes.profile, prev_TES_lay='Charge', mode='design')
                 if hasattr(sys6, 'conn_13'):
                     sys6.conn_13.set_attr(T=400)
+                
+                if is_pi:
+                    # Expected Mode 6 values for initial guess seeding
+                    Q_ptc_m6 = A_ptc * 1000.0 * eta_opt
+                    m_secondary_m6 = Q_ptc_m6 / (960.0 * 40.0)
+                    m_secondary_m6 = max(0.5, m_secondary_m6)
+                    m_ptc_m6 = Q_ptc_m6 / (960.0 * 140.0)  # assume T10 = 420 C
+                    m_ptc_m6 = max(0.5, m_ptc_m6)
+                    m_process_m6 = 450000.0 / (960.0 * 40.0)
+                    
+                    def _T_to_h(T):
+                        return 594.37 + 1.5233 * (T - 420.0)
+                        
+                    m6_guesses = {
+                        'conn_01': {'m': m_ptc_m6, 'T': 420.0},
+                        'conn_02': {'m': m_ptc_m6, 'T': 560.0},
+                        'conn_10': {'m': m_ptc_m6, 'T': 420.0},
+                        'conn_13': {'m': m_secondary_m6, 'T': 400.0},
+                        'conn_14': {'m': m_secondary_m6, 'T': 440.0},
+                        'conn_04': {'m': m_process_m6, 'T': 520.0},
+                        'conn_05': {'m': m_process_m6, 'T': 520.0},
+                        'conn_06': {'m': m_process_m6, 'T': 480.0},
+                    }
+                    
+                    for conn_name, vals in m6_guesses.items():
+                        conn = getattr(sys6, conn_name, None)
+                        if conn is not None:
+                            h0_val = _T_to_h(vals['T'])
+                            conn.set_attr(m0=vals['m'], T0=vals['T'], h0=h0_val)
+                            conn.m.val = vals['m']
+                            conn.T.val = vals['T']
+                            conn.h.val = h0_val
+                    print(f"[Mode 6 precalculation] Set guesses: m_ptc={m_ptc_m6:.2f} kg/s, m_secondary={m_secondary_m6:.2f} kg/s")
+                
                 sys6.solve_network(mode='design', TESmode='6')  # saves to .tespy_cache/base_design_6
                 if sys6.network.converged:
                     self.mode6_design_available = True
@@ -634,6 +744,19 @@ class Solver:
         tank_cfg = getattr(system, 'tank_config', 'indirect')
         is_series_direct_m1 = (TESmode == '1' and tank_cfg == 'direct'
                                and getattr(system, 'topology', 'Parallel') == 'Series')
+
+        # Determine active tank heating setpoint
+        T_set_tank = self.winter_logic.get_tank_setpoint(getattr(self, 'current_timestamp', None))
+        
+        # PI Mode 6 Regimes:
+        # Regime A: target T_set_winter (300.1 °C) when in winter.
+        # Regime B: target T_set_production (450.0 °C) when not in winter.
+        if getattr(self, 'topology', 'Parallel') == 'Parallel' and tank_cfg == 'indirect':
+            if TESmode == '6':
+                if self.winter_logic.is_winter(getattr(self, 'current_timestamp', None)):
+                    T_set_tank = self.winter_logic.T_set_winter  # Regime A
+                else:
+                    T_set_tank = self.winter_logic.T_set_production  # Regime B
         # 2) Initialize the TES_HX source temperature from top/bottom
         if TESmode in ['1','5','6']:
             if is_series_direct_m1:
@@ -756,7 +879,7 @@ class Solver:
             if mode_3_fail:
                 # DHX exhausted — accept partial discharge, don't fall back to Mode 4
                 profile = system.tes.profile
-                old_profile = system.tes.calc_heat_loss(profile, 3600, Tamb)
+                old_profile = system.tes.calc_heat_loss(profile, 3600, Tamb, T_set=T_set_tank)
                 system.tes.profile = old_profile
                 iter_info['status'] = 'converged'
                 iter_info['final_mode'] = TESmode
@@ -767,14 +890,14 @@ class Solver:
                 if getattr(system, 'tank_config', 'indirect') == 'direct':
                     hot_p = system.hot_tes.profile
                     cold_p = system.cold_tes.profile
-                    old_hot_profile = system.hot_tes.calc_heat_loss(hot_p, 3600, Tamb)
-                    old_cold_profile = system.cold_tes.calc_heat_loss(cold_p, 3600, Tamb)
+                    old_hot_profile = system.hot_tes.calc_heat_loss(hot_p, 3600, Tamb, T_set=T_set_tank)
+                    old_cold_profile = system.cold_tes.calc_heat_loss(cold_p, 3600, Tamb, T_set=T_set_tank)
                     system.hot_tes.profile = old_hot_profile
                     system.cold_tes.profile = old_cold_profile
                     old_profile = old_hot_profile
                 else:
                     profile = system.tes.profile
-                    old_profile = system.tes.calc_heat_loss(profile, 3600, Tamb)
+                    old_profile = system.tes.calc_heat_loss(profile, 3600, Tamb, T_set=T_set_tank)
                     system.tes.profile = old_profile
                 iter_info['status'] = 'converged'
                 iter_info['final_mode'] = TESmode
@@ -932,14 +1055,14 @@ class Solver:
                 if getattr(system, 'tank_config', 'indirect') == 'direct':
                     hot_p = system.hot_tes.profile
                     cold_p = system.cold_tes.profile
-                    old_hot_profile = system.hot_tes.calc_heat_loss(hot_p, 3600, Tamb)
-                    old_cold_profile = system.cold_tes.calc_heat_loss(cold_p, 3600, Tamb)
+                    old_hot_profile = system.hot_tes.calc_heat_loss(hot_p, 3600, Tamb, T_set=T_set_tank)
+                    old_cold_profile = system.cold_tes.calc_heat_loss(cold_p, 3600, Tamb, T_set=T_set_tank)
                     system.hot_tes.profile = old_hot_profile
                     system.cold_tes.profile = old_cold_profile
                     old_profile = old_hot_profile
                 else:
                     profile = system.tes.profile
-                    old_profile = system.tes.calc_heat_loss(profile, 3600, Tamb)
+                    old_profile = system.tes.calc_heat_loss(profile, 3600, Tamb, T_set=T_set_tank)
                     system.tes.profile = old_profile
                 self.TES_profiles.append(old_profile)
                 break
@@ -1195,6 +1318,18 @@ class Solver:
             else:
                 pump_kw = 0.0
 
+        # ---------- tank auxiliary heaters energy (kJ) ----------
+        # Stored in Joules to match the other energy columns (which have _kJ suffix but are in Joules)
+        aux_tes_energy_kJ = 0.0
+        if getattr(system, 'tank_config', 'indirect') == 'direct':
+            if hasattr(system, 'hot_tes') and system.hot_tes is not None:
+                aux_tes_energy_kJ += getattr(system.hot_tes, 'last_aux_energy_J', 0.0)
+            if hasattr(system, 'cold_tes') and system.cold_tes is not None:
+                aux_tes_energy_kJ += getattr(system.cold_tes, 'last_aux_energy_J', 0.0)
+        else:
+            if hasattr(system, 'tes') and system.tes is not None:
+                aux_tes_energy_kJ += getattr(system.tes, 'last_aux_energy_J', 0.0)
+
         net_conv = bool(getattr(system.network, 'converged', False))
         return dict(
             # energÃ­as
@@ -1202,6 +1337,7 @@ class Solver:
             tes_to_proc_kJ=tes_to_proc_kJ,
             solar_to_proc_kJ=solar_to_proc_kJ,
             aux_to_proc_kJ=aux_to_proc_kJ,
+            aux_tes_energy_kJ=aux_tes_energy_kJ,
             ptc_total_kJ=ptc_total_kJ,
             # temperaturas
             T_ptc_out=T_ptc_out,
@@ -1266,6 +1402,7 @@ class Solver:
         
         for idx, row in tqdm(data_frame.iterrows(), total=len(data_frame), desc="Simulating"):
             
+            self.current_timestamp = row[time_col]
             self.mode_alert = False
             current_irr = row[E_col]
             self.current_irr = current_irr
@@ -1354,6 +1491,7 @@ class Solver:
                 'tes_to_proc_kJ':     signals['tes_to_proc_kJ'],
                 'solar_to_proc_kJ':   signals['solar_to_proc_kJ'],
                 'aux_to_proc_kJ':     signals['aux_to_proc_kJ'],
+                'aux_tes_energy_kJ':  signals['aux_tes_energy_kJ'],
                 'ptc_total_kJ':       signals['ptc_total_kJ'],
                 
                 # --- temperaturas relevantes ---
@@ -1410,17 +1548,20 @@ class Solver:
         self.dt_hours = 1.0
         df = pd.DataFrame(self.results)
         total_ptc_energy_kJ = df['ptc_energy_kJ'].sum()
-        total_ph_energy_kJ  = df['ph_energy_kJ'].sum()#.loc[df['ph_energy_kJ'] > 0].sum()
+        total_ph_energy_kJ  = df['ph_energy_kJ'].sum()
+        total_aux_tes_kJ    = df['aux_tes_energy_kJ'].sum() if 'aux_tes_energy_kJ' in df.columns else 0.0
         # pump power (W) * 3600 s for each step (assuming dt=1h)
         total_pump_energy_kJ = (df['pump_power_W'] * 3600.0 * self.dt_hours).sum() / 1000
         
         # Convert kJ to MWh (1 MWh = 3.6e6 kJ)
-        ptc_energy_GWh   = total_ptc_energy_kJ / 3.6e9
-        ph_energy_GWh    = total_ph_energy_kJ  / 3.6e9
-        pump_energy_MWh  = total_pump_energy_kJ / 3.6e6
+        ptc_energy_GWh    = total_ptc_energy_kJ / 3.6e9
+        ph_energy_GWh     = total_ph_energy_kJ  / 3.6e9
+        aux_tes_energy_GWh = total_aux_tes_kJ    / 3.6e9
+        pump_energy_MWh   = total_pump_energy_kJ / 3.6e6
         
         # Plant factor and Solar fraction
-        total_thermal_energy = total_ptc_energy_kJ + total_ph_energy_kJ
+        # Solar fraction counts all auxiliary energy (process + storage tank heating)
+        total_thermal_energy = total_ptc_energy_kJ + total_ph_energy_kJ + total_aux_tes_kJ
         solar_fraction = total_ptc_energy_kJ / total_thermal_energy if total_thermal_energy > 0 else 0
         spf = total_ptc_energy_kJ / (total_thermal_energy + total_pump_energy_kJ) if (total_thermal_energy + total_pump_energy_kJ) > 0 else 0
 
@@ -1428,6 +1569,7 @@ class Solver:
         print("\n=== Performance Summary ===")
         print(f"Total PTC Energy:       {ptc_energy_GWh:6.2f} GWh")
         print(f"Total Preheater Energy:{ph_energy_GWh:6.2f} GWh")
+        print(f"Total Tank Aux Energy:  {aux_tes_energy_GWh:6.2f} GWh")
         print(f"Total Pump Energy:      {pump_energy_MWh:6.2f} MWh")
         print(f"Solar Fraction:         {solar_fraction * 100:6.2f}%")
         print(f"Solar Plant Factor:     {spf * 100:6.2f}%")

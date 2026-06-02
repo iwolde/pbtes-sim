@@ -69,8 +69,34 @@ def test_fixture_creation(system_fixture):
 def test_create_network_for_modes(system_fixture, mode):
     """
     Tests that the network is created successfully for each specified mode.
-    Mode 5 is intentionally skipped as per requirements.
     """
     system_fixture.create_network(mode=mode)
     assert system_fixture.network is not None
     assert isinstance(system_fixture.network, object) # A basic check for a TESPy network object
+
+def test_solver_mode1_precalculation_areas():
+    """
+    Tests that Solver.initialize_modes() converges for small and large PTC areas
+    using the new pre-calculation and scaling logic.
+    """
+    from pbtes.simulation.solver import Solver
+    from pbtes.config import baseline_config
+    
+    # Get baseline config
+    tes_p, comp_p, conn_p = baseline_config()
+    
+    # Test with very small PTC area (500 m2)
+    comp_p_small = comp_p.copy()
+    comp_p_small['ptc_A'] = 500.0
+    solver_small = Solver(tes_p, comp_p_small, conn_p, HTF='INCOMP::NaK', topology='Parallel', tank_config='indirect')
+    solver_small.initialize_modes()
+    assert solver_small.charge_hx_kA is not None
+    assert solver_small.charge_hx_kA > 0.0
+    
+    # Test with very large PTC area (3000 m2)
+    comp_p_large = comp_p.copy()
+    comp_p_large['ptc_A'] = 3000.0
+    solver_large = Solver(tes_p, comp_p_large, conn_p, HTF='INCOMP::NaK', topology='Parallel', tank_config='indirect')
+    solver_large.initialize_modes()
+    assert solver_large.charge_hx_kA is not None
+    assert solver_large.charge_hx_kA > 0.0

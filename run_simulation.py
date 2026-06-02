@@ -89,11 +89,16 @@ def run_single_simulation(
     tank_diameter=7.0,
     tank_height=5.0,
     particle_diameter=0.050,
-    void_fraction=0.4
+    void_fraction=0.4,
+    T_init=None
 ):
     # Load baseline parameters
     tes_params, component_params, conexion_params = baseline_config()
     zinc_params = zinc_pool_config()
+
+    # Apply overrides
+    if T_init is not None:
+        tes_params['Initial temperature'] = T_init
 
     # Apply overrides
     component_params['ptc_A'] = aperture
@@ -232,6 +237,7 @@ def main():
     parser.add_argument('--tank_height', type=float, default=5.0, help="TES packed bed height (Tank length) in m.")
     parser.add_argument('--particle_diameter', type=float, default=0.050, help="Packed bed particle diameter in m.")
     parser.add_argument('--void_fraction', type=float, default=0.4, help="Packed bed void fraction (porosity).")
+    parser.add_argument('--T_init', type=float, default=None, help="TES uniform initial temperature override in °C.")
     
     args = parser.parse_args()
 
@@ -245,7 +251,8 @@ def main():
         tank_diameter=args.tank_diameter,
         tank_height=args.tank_height,
         particle_diameter=args.particle_diameter,
-        void_fraction=args.void_fraction
+        void_fraction=args.void_fraction,
+        T_init=args.T_init
     )
 
 

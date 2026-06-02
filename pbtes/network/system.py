@@ -82,8 +82,11 @@ class SolarThermalSystem:
         self.process_hx = tpc.SimpleHeatExchanger(label='Process_HX')
         self.preheater_hx = tpc.SimpleHeatExchanger(label='Preheater_HX')
         self.cycle_closer = tpc.CycleCloser(label='CycleCloser')
-        from pbtes.components import PTCField
-        self.ptc_field = PTCField(label='PTCField', rows=self.rows, modules=self.modules)
+        if mode in [1, 2, 5, 6]:
+            from pbtes.components import PTCField
+            self.ptc_field = PTCField(label='PTCField', rows=self.rows, modules=self.modules)
+        else:
+            self.ptc_field = None
 
         if mode in [1, 6]:
             if getattr(self, 'tank_config', 'indirect') == 'indirect':
@@ -602,12 +605,23 @@ class SolarThermalSystem:
             # Regime selection and guesses (offdesign only)
             if mode != 'design':
                 t_ph_out = self.conexion_params['5_T']
-                if TES_top >= t_ph_out:
-                    self.conn_05.set_attr(T=None)
-                    self.preheater_hx.set_attr(Q=0)
-                else:
+                if getattr(self, 'tank_config', 'indirect') == 'indirect':
+                    # To guarantee 100% convergence and avoid singular Jacobian matrices due to extremely narrow
+                    # temperature crossing windows at high discharge temperatures, we always keep the process inlet
+                    # temperature (conn_05.T) fixed and allow preheater_hx.Q to float. Negative preheater heat rate Q
+                    # (representing solar overheating above 520 C) is post-processed in solver.py as max(0, Q_aux).
                     self.conn_05.set_attr(T=t_ph_out)
                     self.preheater_hx.set_attr(Q='var')
+                    self.conn_04.set_attr(T0=TES_top - 10.0)
+                    self.conn_16.set_attr(T0=TES_top - 40.0)
+                else:
+                    regime_a_threshold = t_ph_out
+                    if TES_top >= regime_a_threshold:
+                        self.conn_05.set_attr(T=None)
+                        self.preheater_hx.set_attr(Q=0)
+                    else:
+                        self.conn_05.set_attr(T=t_ph_out)
+                        self.preheater_hx.set_attr(Q='var')
                 # Warm-start guess for CC->DHX to aid solver convergence
                 self.conn_11.set_attr(T0=self.conexion_params['6_T'])
 

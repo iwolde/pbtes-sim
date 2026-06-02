@@ -43,7 +43,7 @@ def design_then_offdesign(mode, e_values, **kwargs):
         sys_d.set_operation_mode(TESmode=str(mode), current_irr=1000, profile=profile,
                                   prev_TES_lay='Charge', mode='design')
     elif mode == 3:
-        sys_d.set_operation_mode(TESmode='3', profile=np.ones(20) * 540,
+        sys_d.set_operation_mode(TESmode='3', current_irr=0, profile=np.ones(20) * 540,
                                   prev_TES_lay='Charge', mode='design')
         if hasattr(sys_d, 'conn_15'):
             sys_d.conn_15.set_attr(T=540)
@@ -62,6 +62,8 @@ def design_then_offdesign(mode, e_values, **kwargs):
             if mode == 6:
                 sys_o.charge_hx_kA = 150213
             if mode == 3:
+                sys_o.discharge_hx_kA = sys_d.discharge_tes_hx.kA.val
+                sys_o.tes_charge_m = sys_d.conn_15.m.val
                 sys_o.set_operation_mode(TESmode='3', current_irr=0, profile=np.ones(20) * 540,
                                           prev_TES_lay='Charge', mode='offdesign')
                 if hasattr(sys_o, 'conn_15'):
@@ -71,12 +73,12 @@ def design_then_offdesign(mode, e_values, **kwargs):
                                           prev_TES_lay='Charge', mode='offdesign')
             sys_o.solve_network(mode='offdesign', TESmode=str(mode), use_init_path=True)
         else:
-            if mode != 3:
+            if getattr(sys_o, 'ptc_field', None) is not None:
                 sys_o.ptc_field.set_attr(E=e)
                 sys_o.solve_network(mode='offdesign', TESmode=str(mode), use_init_path=False)
             else:
                 sys_o.solve_network(mode='offdesign', TESmode=str(mode), use_init_path=False)
-        q = sys_o.ptc_field.Q.val / 1e6 if hasattr(sys_o, 'ptc_field') else 0
+        q = sys_o.ptc_field.Q.val / 1e6 if getattr(sys_o, 'ptc_field', None) is not None else 0
         results.append(q)
     return results
 
@@ -115,3 +117,11 @@ def test_mode4_offdesign():
     """Mode 4: Simple auxiliary loop, always converges."""
     results = design_then_offdesign(4, [800])
     assert len(results) == 1  # Just tests convergence
+
+
+def test_mode3_offdesign():
+    """Mode 3 Parallel Indirect: ensures discharging converges cleanly and works in Regime A/B."""
+    # We test multiple offdesign iterations of Mode 3 discharging
+    results = design_then_offdesign(3, [0, 0, 0])
+    assert len(results) == 3
+

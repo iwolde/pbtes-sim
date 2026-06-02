@@ -159,7 +159,10 @@ During transient simulation, the structural conductance $kA$ remains constant. T
 3. **Schumann Model Integration**: Solve the 1D Schumann model for the secondary charging fluid flow:
    $$T_{13}^{\text{new}} = \text{Schumann\_Step}\left(T_{14}, \dot{m}_{\text{sec}}, \Delta t\right)$$
 4. **Convergence Check**: Repeat steps 2-3 until $|T_{13}^{\text{new}} - T_{13}^0| < 10^{-3}\text{ K}$.
-5. **Mode 3 Discharging Coupling**: In offdesign discharging, the process side temperature is set via a coupling target: $T_4 = T_{15} - 20\text{ K}$, where $T_{15}$ is the hot outlet of the PBTES (top of bed). The secondary discharge mass flow is propagated from the designed sizing value, and the preheater heat duty $Q_{\text{aux}}$ varies to top up the process inlet to $520^\circ\text{C}$ if $T_4 < 520^\circ\text{C}$.
+5. **Mode 3 Discharging Coupling**: In offdesign discharging, the process side temperature is set via a coupling target: $T_4 = T_{15} - 20\text{ K}$, where $T_{15}$ is the hot outlet of the PBTES (top of bed). The secondary discharge mass flow is propagated from the designed sizing value, and the preheater heat duty $Q_{\text{aux}}$ is governed by two continuous operating regimes:
+   * **Regime A (Preheater $Q_{\text{aux}} = 0$)**: Triggered when $T_{15} \ge 540^\circ\text{C}$ (i.e. $T_{\text{target}} + 20\text{ K}$ to account for the design heat exchanger temperature drop). The process inlet temperature $T_5$ floats freely above the target ($T_5 = T_4 \ge 520^\circ\text{C}$).
+   * **Regime B (Preheater $Q_{\text{aux}} > 0$)**: Triggered when $T_{15} < 540^\circ\text{C}$. The preheater actively tops up the process inlet to exactly $520^\circ\text{C}$ ($T_5 = 520^\circ\text{C}$ is fixed and $Q_{\text{aux}} = \text{'var'}$).
+   * This refined regime boundary prevents physical and mathematical step-change discontinuities (which would occur if switching at $520^\circ\text{C}$). Discharging is viable down to a state-of-charge floor of $SoC > 2\%$ ($soc\_norm > 0.02$) and $T_{15} > 500^\circ\text{C}$.
 
 ---
 

@@ -122,7 +122,7 @@ class Solver:
         if is_series_direct:
             T_min_discharge = t_proc_set  # 480 C - SD: preheater tops up
         else:
-            T_min_discharge = t_proc_set + 20  # 500 C - PI/indirect needs HX margin
+            T_min_discharge = t_proc_set + 5.0  # 485 C - PI/indirect with Regime B support
         T_max_discharge = 580              # NaK safe limit - 20, expanded range
         
         # Calculate State of Charge (SOC)
@@ -215,12 +215,12 @@ class Solver:
         # --- Irradiancia suficiente solo para proceso (sin excedente para carga) ---
         if irr > self.E_min_process:
             # Check discharge first: if TES has energy, use it + top up with PTC
-            if TES_top > T_min_discharge and TES_top <= T_max_discharge and soc_norm > 0.1:
+            if TES_top > T_min_discharge and TES_top <= T_max_discharge and soc_norm > 0.02:
                 return '3'
             return '2'
     
         # --- Baja irradiancia: descargar TES si tiene energia ---
-        if TES_top > T_min_discharge and TES_top <= T_max_discharge and soc_norm > 0.1:
+        if TES_top > T_min_discharge and TES_top <= T_max_discharge and soc_norm > 0.02:
             return '3'
         return '4'
     
@@ -497,7 +497,7 @@ class Solver:
                 except AttributeError:
                     pass
     
-                warm_start = (mode == 'offdesign' and TESmode in ['1', '2'])
+                warm_start = (mode == 'offdesign' and TESmode in ['1', '2', '3'])
                 system.solve_network(mode=mode, design_path=design_path, TESmode=TESmode,
                                      use_init_path=warm_start)
                 conv = bool(getattr(system.network, 'converged', False))
@@ -1091,7 +1091,7 @@ class Solver:
         if hasattr(system, 'cold_tes_pipe') and system.cold_tes_pipe is not None:
             q_chg_kw += _get_Q_kw(hx_chg2)
         q_dch_kw = _get_Q_kw(hx_dch)
-        q_aux_kw = _get_Q_kw(hx_aux)
+        q_aux_kw = max(0.0, _get_Q_kw(hx_aux))
         q_proc_kw = _get_Q_kw(hx_proc)
 
         # ---------- mode-gating: zero out physically impossible contributions ----------
@@ -1238,6 +1238,8 @@ class Solver:
             self.solar_system.charge_hx_kA = self.charge_hx_kA
         if hasattr(self, 'discharge_hx_kA') and self.discharge_hx_kA is not None:
             self.solar_system.discharge_hx_kA = self.discharge_hx_kA
+        if hasattr(self, 'discharge_tes_m_design') and self.discharge_tes_m_design is not None:
+            self.solar_system.tes_charge_m = self.discharge_tes_m_design
         self.solar_system.create_network(mode=4)
         self.results = []
         

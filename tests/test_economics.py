@@ -4,12 +4,12 @@ from pbtes.analysis.economics import EconomicAssessment
 from pbtes.config import SimulationConfig
 
 def test_economic_assessment_basic():
-    # Mock dataframe with some data
+    # Mock dataframe with some data (in Joules, as saved by the solver)
     data = {
         'W_pump_kW': [10.0, 15.0, 20.0],
-        'aux_to_proc_kJ': [3600.0 * 50, 3600.0 * 100, 3600.0 * 50], # 200 kWh thermal total
-        'solar_to_proc_kJ': [3600.0 * 100, 0.0, 0.0], # 100 kWh
-        'tes_to_proc_kJ': [0.0, 3600.0 * 100, 3600.0 * 100] # 200 kWh
+        'aux_to_proc_kJ': [3600.0 * 50 * 1000.0, 3600.0 * 100 * 1000.0, 3600.0 * 50 * 1000.0], # 200 kWh thermal total in Joules
+        'solar_to_proc_kJ': [3600.0 * 100 * 1000.0, 0.0, 0.0], # 100 kWh in Joules
+        'tes_to_proc_kJ': [0.0, 3600.0 * 100 * 1000.0, 3600.0 * 100 * 1000.0] # 200 kWh in Joules
     }
     df = pd.DataFrame(data)
     

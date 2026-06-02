@@ -23,12 +23,14 @@ network solving and a 1D Schumann model for the packed bed.
 | Document | Purpose |
 |----------|---------|
 | `.planning/PLANT_LAYOUTS_AND_MODES.md` | **Ground truth** for operating modes, layouts, and component roles |
+| `.planning/MODE1_PI_DEBUGGING.md` | **Mode 1 Parallel/Indirect debugging guide** and failure analysis |
 | `insumos paper/PROJECT_CONTEXT.md` | Full project reference (parameters, workflow, results format) |
 | `insumos paper/PHYSICS_METHODOLOGY.md` | Mathematical models, layout sizing, and offdesign coupling physics |
 | `insumos paper/zinc_pool_model_methodology.md` | Zinc pool physics and coupling |
 | `pbtes/config.py` | Single source of truth for ALL numeric parameters |
 | `TODO.md` | Current task list — update when completing items |
 | `.planning/STATE.md` | Current project phase and known issues |
+
 
 ## 2. Codebase Structure
 
@@ -55,7 +57,8 @@ codigos/
 │   ├── network/
 │   │   └── system.py             ← SolarThermalSystem (6-mode network builder)
 │   ├── simulation/
-│   │   └── solver.py             ← Solver (quasi-steady orchestrator)
+│   │   ├── solver.py             ← Solver (quasi-steady orchestrator)
+│   │   └── winter_logic.py       ← WinterLogic (seasonal control logic)
 │   ├── reporting/
 │   │   └── plots.py              ← Reporting (plots, CSV I/O)
 │   ├── analysis/
@@ -84,7 +87,8 @@ codigos/
 │   ├── test_transitions.py
 │   ├── test_zinc_pool.py
 │   ├── test_economics.py
-│   └── test_exergoeconomics.py
+│   ├── test_exergoeconomics.py
+│   └── test_winter_logic.py
 │
 ├── insumos paper/                ← paper context & methodology docs
 │   ├── PROJECT_CONTEXT.md        ← full project reference

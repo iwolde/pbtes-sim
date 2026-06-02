@@ -281,3 +281,46 @@ $$W_{\text{pump}} = \sum_{j} \frac{\dot{m}_j \cdot \Delta p_j}{\rho_f \cdot \eta
 where $\eta_{\text{pump}} = 0.75$ is the overall combined pump and motor efficiency. The net solar fraction ($SF_{\text{net}}$) is adjusted during post-processing to account for the electrical energy consumed by the pumps, converting it to equivalent thermal losses using the plant's thermal-to-electrical conversion penalty:
 $$SF_{\text{net}} = \frac{\sum \left( \dot{Q}_{\text{solar,proc}} + \dot{Q}_{\text{tes,proc}} \right) \cdot \Delta t - \frac{W_{\text{pump,total}} \cdot \Delta t}{\eta_{\text{power\_cycle}}}}{\sum \left( \dot{Q}_{\text{solar,proc}} + \dot{Q}_{\text{tes,proc}} + \dot{Q}_{\text{aux,proc}} \right) \cdot \Delta t}$$
 where $\eta_{\text{power\_cycle}} = 0.35$ represents the baseline thermal power cycle efficiency.
+
+---
+
+## 7. Seasonal Winter Control Logic & Tank Auxiliary Heaters
+
+To ensure the physical integrity of the plant during periods of low solar resource (Southern Hemisphere winter: June, July, and August) and prevent eutectic NaK from cooling below the CoolProp property limits ($300.1^\circ\text{C}$), an active **Tank Auxiliary Heating System** and a **Winter Control Logic** are integrated.
+
+### 7.1 Tank Heater Blanket Physical Model
+The tank auxiliary heaters are modeled as electric blankets wrapped around the steel tank walls (sandwiched between the steel wall and outer insulation). 
+
+```
+          Fluid Bed Node (T)
+                 │
+                 ├──► [ R_wall ]
+                 │
+           Blanket Node (T_set)
+                 │
+                 ├──► [ R_ins + R_conv ]
+                 │
+            Ambient (T_amb)
+```
+
+For any given layer structure $i$, if the unheated timestep temperature $T_{\text{new,unheated}}$ falls below the active setpoint $T_{\text{set}}$, the blanket heater turns on to clamp the node temperature to $T_{\text{set}}$. The energy consumption is computed as the sum of:
+1. **Heat delivered to the tank layer** ($\dot{Q}_{\text{to\_tank}}$), required to raise the layer from its unheated temperature to the setpoint:
+   $$\dot{Q}_{\text{to\_tank}, i} = C_{\text{eff}, i} \frac{T_{\text{set}} - T_{\text{new,unheated}, i}}{\Delta t}$$
+2. **Heat lost from the blanket to the environment** ($\dot{Q}_{\text{to\_env}}$), which passes through the outer insulation and convective boundary layers:
+   $$\dot{Q}_{\text{to\_env}, i} = \frac{T_{\text{set}} - T_{\text{amb}}}{R_{\text{ins}, i} + R_{\text{conv}, i}}$$
+
+The total auxiliary blanket energy consumed by structural node $i$ over the step is:
+$$E_{\text{blanket}, i} = \left( \dot{Q}_{\text{to\_tank}, i} + \dot{Q}_{\text{to\_env}, i} \right) \cdot \Delta t$$
+
+### 7.2 Winter Logic Operational Scheme
+The dynamic target setpoint $T_{\text{set}}$ is governed by the seasonal `WinterLogic` controller:
+* **Production Months (Sept–May)**: The storage tanks are maintained at $T_{\text{set\_production}} = 450.0^\circ\text{C}$ to keep them warm and ready for operation.
+* **Winter Months (June–Aug)**: To conserve energy while preventing freeze-up, the storage setpoint is lowered to $T_{\text{set\_winter}} = 300.1^\circ\text{C}$ (freeze protection threshold).
+
+### 7.3 Integration Across Configurations
+1. **Parallel/Indirect (PI) Mode 6 Regimes**:
+   In Parallel Indirect, charging the storage while the process is decoupled (Mode 6) operates under two seasonal regimes:
+   - **Regime A (Winter/Standby)**: Mode 6 charges/maintains the tank at $T_{\text{set\_winter}} = 300.1^\circ\text{C}$.
+   - **Regime B (Production)**: Mode 6 charges/maintains the tank at $T_{\text{set\_production}} = 450.0^\circ\text{C}$.
+2. **Series/Direct (SD) Heating Modes**:
+   Since the direct-contact beds are directly in the primary loop, the Hot and Cold tank blankets are active across all modes (Modes 1, 2, 3, 4) to clamp NaK temperatures to the active setpoint (either $450.0^\circ\text{C}$ or $300.1^\circ\text{C}$).

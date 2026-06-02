@@ -49,7 +49,8 @@ def print_monthly_breakdown(df):
             
         # Solar Fraction SF%
         sol_useful = m_df['solar_to_proc_kJ'].sum() + m_df['tes_to_proc_kJ'].sum()
-        total_demand = sol_useful + m_df['aux_to_proc_kJ'].sum()
+        total_aux_tes = m_df['aux_tes_energy_kJ'].sum() if 'aux_tes_energy_kJ' in m_df.columns else 0.0
+        total_demand = sol_useful + m_df['aux_to_proc_kJ'].sum() + total_aux_tes
         sf = (sol_useful / total_demand * 100) if total_demand > 0 else 0.0
         
         # DNI
@@ -65,7 +66,7 @@ def print_monthly_breakdown(df):
         # Energy in GJ (1 GJ = 1,000,000 kJ)
         q_ch = m_df['to_tes_kJ'].sum() / 1e6
         q_dis = m_df['tes_to_proc_kJ'].sum() / 1e6
-        q_aux = m_df['aux_to_proc_kJ'].sum() / 1e6
+        q_aux = (m_df['aux_to_proc_kJ'].sum() + total_aux_tes) / 1e6
         
         # Mode top 3
         mode_counts = m_df['TESmode'].astype(str).value_counts()
@@ -163,6 +164,7 @@ def run_single_simulation(
         'T_ptc_out', 'T_tes_top', 'T_tes_bottom', 'tes_soc_kWh', 'mdot_ptc_kg_s',
         'mdot_tes_charge_kg_s', 'mdot_tes_discharge_kg_s', 'mdot_process_kg_s',
         'to_tes_kJ', 'tes_to_proc_kJ', 'solar_to_proc_kJ', 'aux_to_proc_kJ',
+        'aux_tes_energy_kJ',
         'T_zinc', 'Q_zinc_hx_kW', 'zinc_operating'
     ]
     

@@ -34,12 +34,15 @@ def process_file(filepath: str):
         # Calculate summary metrics for feedback
         total_pump_MWh = df['W_pump_kW'].sum() / 1000.0  # 1-hour steps
         
-        # Original Solar Fraction (Thermal)
+        # Updated Solar Fraction (Thermal)
         q_solar = df['solar_to_proc_kJ'].sum() + df['tes_to_proc_kJ'].sum()
-        q_total = q_solar + df['aux_to_proc_kJ'].sum()
+        q_aux_tes = df.get('aux_tes_energy_kJ', 0.0).sum() if 'aux_tes_energy_kJ' in df.columns else 0.0
+        q_total = q_solar + df['aux_to_proc_kJ'].sum() + q_aux_tes
         sf_thermal = (q_solar / q_total) * 100 if q_total > 0 else 0
         
         print(f"  -> Total pump energy: {total_pump_MWh:.3f} MWh/year")
+        if q_aux_tes > 0:
+            print(f"  -> Total tank aux:    {q_aux_tes / 3.6e9:.3f} MWh")
         print(f"  -> Thermal SF:        {sf_thermal:.1f}%")
         
         # Create output filename

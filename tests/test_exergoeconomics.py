@@ -3,14 +3,14 @@ import pandas as pd
 from pbtes.analysis.exergoeconomics import ExergoeconomicAssessment
 
 def test_exergoeconomic_assessment():
-    # Mock dataframe with some data
+    # Mock dataframe with some data (in Joules, as saved by the solver)
     data = {
         'W_pump_kW': [10.0],
         'E': [900.0], # W/m2 DNI
         'Tamb': [20.0], # deg C -> 293.15 K
         'T_zinc': [450.0], # deg C -> 723.15 K
         'aux_to_proc_kJ': [0.0], 
-        'solar_to_proc_kJ': [3600.0 * 100], # 100 kWh
+        'solar_to_proc_kJ': [3600.0 * 100 * 1000.0], # 100 kWh in Joules
         'tes_to_proc_kJ': [0.0]
     }
     df = pd.DataFrame(data)

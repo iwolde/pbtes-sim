@@ -681,6 +681,9 @@ class SolarThermalSystem:
                     c_2=self.component_params.get('ptc_c_2', 0),
                     iam_1=self.component_params.get('ptc_iam_1', 0),
                     iam_2=self.component_params.get('ptc_iam_2', 0))
+                self.preheater_hx.set_attr(Q='var')
+                self.conn_05.set_attr(T=self.conexion_params['5_T'])
+
 
         elif TESmode == '6':
             is_m6par = (getattr(self, 'topology', 'Parallel') == 'Parallel')

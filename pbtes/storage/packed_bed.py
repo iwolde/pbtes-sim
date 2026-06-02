@@ -57,6 +57,7 @@ class ThermalEnergyStorage:
         self.tout = self.initial_temperature
         self.mflow = 0
         self.V_in = 0
+        self.last_aux_energy_J = 0.0
 
     def air_params(self):
         self.init = np.clip(self.init, 300.1, 600.0)
@@ -222,10 +223,10 @@ class ThermalEnergyStorage:
         self.tout = self.profile[-1]
         return self.profile
 
-    def calc_heat_loss(self, profile, dt, T_amb):
+    def calc_heat_loss(self, profile, dt, T_amb, T_set=None):
         """
         Update the temperature profile of a stratified TES packed bed over a time step dt,
-        accounting for heat losses to ambient.
+        accounting for heat losses to ambient and optional auxiliary heating blanket.
 
         Parameters
         ----------
@@ -235,11 +236,13 @@ class ThermalEnergyStorage:
             Time step [s].
         T_amb : float
             Ambient temperature [C].
+        T_set : float, optional
+            Target setpoint temperature for the tank auxiliary heater [C].
 
         Returns
         -------
         new_T_profile : array
-            Updated temperature profile after heat losses [C].
+            Updated temperature profile after heat losses and heating [C].
         """
         profile = np.clip(np.array(profile), 300.1, 600.0)
         n_layers = len(profile)
@@ -248,6 +251,7 @@ class ThermalEnergyStorage:
         volume_layer = A_cross * dz
 
         new_T_profile = np.zeros_like(profile)
+        total_aux_energy_J = 0.0
 
         for i, T in enumerate(profile):
             T = max(T, 300.1)
@@ -275,9 +279,20 @@ class ThermalEnergyStorage:
             Q_loss = (T - T_amb) / R_total
 
             dT = (Q_loss * dt) / effective_capacity
+            T_new_unheated = T - dT
 
-            new_T_profile[i] = T - dT
+            if T_set is not None and T_new_unheated < T_set:
+                new_T_profile[i] = T_set
+                # Heat delivered to the tank layer (Watts)
+                Q_to_tank_W = effective_capacity * (T_set - T_new_unheated) / dt
+                # Heat lost from the heating blanket to the environment (Watts)
+                Q_to_env_W = (T_set - T_amb) / (R_ins + R_conv)
+                # Total heater energy for this layer (Joules)
+                total_aux_energy_J += (Q_to_tank_W + Q_to_env_W) * dt
+            else:
+                new_T_profile[i] = T_new_unheated
 
+        self.last_aux_energy_J = total_aux_energy_J
         return new_T_profile
 
     def set_state(self, new_state):

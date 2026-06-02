@@ -2,7 +2,8 @@
 gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Production Runs & Exergoeconomics
-status: Phase C Refinement — Refined Mode 1 and Mode 6 design pre-calculations and off-design counter-flow NTU initial guess seeding. The Parallel/Indirect layout is now 100% robust across arbitrary PTC aperture areas (verified with 500 to 3000 m2). A 7-day NaK simulation with A=2000 m2 converged flawlessly, achieving 56.1% solar fraction with active charging/discharging.
+status: Phase C Refinement — Compiled a comprehensive debugging guide (.planning/MODE1_PI_DEBUGGING.md) detailing the off-design convergence failures, thermodynamic pinch-point limits, and randomization guess bugs for Mode 1 Parallel/Indirect (PI) configuration under transient conditions.
+
 last_updated: "2026-06-02T16:37:00-04:00"
 progress:
   total_phases: 4
@@ -51,9 +52,11 @@ See `TODO.md` for the active checklist.
 | Document | Location | Status |
 |----------|----------|--------|
 | Operating modes (ground truth) | `.planning/PLANT_LAYOUTS_AND_MODES.md` | Current (v3.0) |
+| Mode 1 PI Debugging Guide | `.planning/MODE1_PI_DEBUGGING.md` | New |
 | Project context | `insumos paper/PROJECT_CONTEXT.md` | Current |
 | Physics & coupling methodology | `insumos paper/PHYSICS_METHODOLOGY.md` | Current |
 | Zinc pool methodology | `insumos paper/zinc_pool_model_methodology.md` | Current |
 | Task list | `TODO.md` | Active |
 | Agent instructions | `AGENTS.md` | Current (2026-05-21) |
+
 

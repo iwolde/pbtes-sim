@@ -44,7 +44,8 @@ class ExergoeconomicAssessment(EconomicAssessment):
         
         Q_solar_to_proc = df['solar_to_proc_kJ'].fillna(0.0) if 'solar_to_proc_kJ' in df.columns else np.zeros(len(df))
         Q_tes_to_proc = df['tes_to_proc_kJ'].fillna(0.0) if 'tes_to_proc_kJ' in df.columns else np.zeros(len(df))
-        Q_aux = df['aux_to_proc_kJ'].fillna(0.0) if 'aux_to_proc_kJ' in df.columns else np.zeros(len(df))
+        Q_aux_proc = df['aux_to_proc_kJ'].fillna(0.0) if 'aux_to_proc_kJ' in df.columns else np.zeros(len(df))
+        Q_aux_tes = df['aux_tes_energy_kJ'].fillna(0.0) if 'aux_tes_energy_kJ' in df.columns else np.zeros(len(df))
         
         # Temperatures in Kelvin
         T_0 = T_amb_C + 273.15
@@ -54,13 +55,15 @@ class ExergoeconomicAssessment(EconomicAssessment):
         # Solar energy incident on the collector aperture
         area = self.ptc_area
         Q_sun_incident_W = E_dni * area
-        Q_sun_incident_kJ = Q_sun_incident_W * self.cfg.solver.time_step / 1000.0
+        # Stored in Joules
+        Q_sun_incident_J = Q_sun_incident_W * self.cfg.solver.time_step
         
         petela_factor = 1.0 - (4.0/3.0)*(T_0 / self.T_SUN) + (1.0/3.0)*(T_0 / self.T_SUN)**4
-        Ex_solar_kJ = Q_sun_incident_kJ * petela_factor
+        Ex_solar_J = Q_sun_incident_J * petela_factor
         
         # 2. Auxiliary Exergy Input (assuming high quality, exergy approx equal to energy)
-        Ex_aux_kJ = Q_aux * 1.0
+        # Includes both process auxiliary and tank auxiliary heater exergy in Joules
+        Ex_aux_J = (Q_aux_proc + Q_aux_tes) * 1.0
         
         # 3. Product Exergy (Exergy delivered to the Zinc pool)
         # Carnot factor based on the sink temperature (zinc pool)
@@ -68,13 +71,13 @@ class ExergoeconomicAssessment(EconomicAssessment):
         # Clamp carnot factor to 0 if Tamb >= Tzinc (unlikely, but safe)
         carnot_factor = np.maximum(carnot_factor, 0.0)
         
-        Q_delivered_total_kJ = Q_solar_to_proc + Q_tes_to_proc + Q_aux
-        Ex_product_kJ = Q_delivered_total_kJ * carnot_factor
+        Q_delivered_total_J = Q_solar_to_proc + Q_tes_to_proc + Q_aux_proc
+        Ex_product_J = Q_delivered_total_J * carnot_factor
         
-        # Aggregate totals (in MWh)
-        total_Ex_solar_MWh = Ex_solar_kJ.sum() / 3600000.0
-        total_Ex_aux_MWh = Ex_aux_kJ.sum() / 3600000.0
-        total_Ex_product_MWh = Ex_product_kJ.sum() / 3600000.0
+        # Aggregate totals (convert Joules to MWh: 1 MWh = 3.6e9 Joules)
+        total_Ex_solar_MWh = Ex_solar_J.sum() / 3.6e9
+        total_Ex_aux_MWh = Ex_aux_J.sum() / 3.6e9
+        total_Ex_product_MWh = Ex_product_J.sum() / 3.6e9
         
         total_Ex_fuel_MWh = total_Ex_solar_MWh + total_Ex_aux_MWh
         

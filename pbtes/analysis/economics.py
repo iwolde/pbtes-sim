@@ -144,9 +144,11 @@ class EconomicAssessment:
         total_pump_kWh = self.df['W_pump_kW'].sum() if 'W_pump_kW' in self.df.columns else 0.0
         cost_electricity = total_pump_kWh * self.cfg.economics.electricity_price_per_kwh
         
-        # Annual auxiliary heater fuel cost
-        # aux_to_proc_kJ is in kJ; convert to kWh
-        total_aux_kWh = (self.df['aux_to_proc_kJ'].sum() / 3600.0) if 'aux_to_proc_kJ' in self.df.columns else 0.0
+        # Annual auxiliary heater fuel cost (process auxiliary + tank auxiliary heater)
+        # aux_to_proc_kJ and aux_tes_energy_kJ are in Joules; convert to kWh
+        total_aux_to_proc_kWh = (self.df['aux_to_proc_kJ'].sum() / 3.6e6) if 'aux_to_proc_kJ' in self.df.columns else 0.0
+        total_aux_tes_kWh = (self.df['aux_tes_energy_kJ'].sum() / 3.6e6) if 'aux_tes_energy_kJ' in self.df.columns else 0.0
+        total_aux_kWh = total_aux_to_proc_kWh + total_aux_tes_kWh
         cost_aux_fuel = total_aux_kWh * self.cfg.economics.aux_fuel_price_per_kwh
         
         # O&M
@@ -160,7 +162,7 @@ class EconomicAssessment:
         tes_kJ = self.df['tes_to_proc_kJ'].sum() if 'tes_to_proc_kJ' in self.df.columns else 0.0
         aux_kJ = self.df['aux_to_proc_kJ'].sum() if 'aux_to_proc_kJ' in self.df.columns else 0.0
         
-        q_delivered_kWh = (solar_kJ + tes_kJ + aux_kJ) / 3600.0
+        q_delivered_kWh = (solar_kJ + tes_kJ + aux_kJ) / 3.6e6
         q_delivered_MWh = q_delivered_kWh / 1000.0
         
         # 4. LCOH [USD/MWh]

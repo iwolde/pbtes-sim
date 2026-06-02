@@ -747,3 +747,24 @@ where:
 | `conn_14` | Charge HX cold side → PBTES (indirect only) | 1, 5, 6 |
 | `conn_15` | PBTES → Discharge HX hot side (indirect only) | 3 |
 | `conn_16` | Discharge HX hot side → PBTES (indirect only) | 3 |
+
+---
+
+## 10. Seasonal Winter Control Logic & Tank Auxiliary Heaters
+
+To maintain the storage beds at operational readiness and prevent freezing of the sodium-potassium alloy (NaK) during winter, the system incorporates an active tank auxiliary heating blanket model and seasonal setpoint control.
+
+### 10.1 Winter Control Logic
+The `WinterLogic` class dynamically manages target storage tank temperature setpoints based on the month of the simulation:
+* **Southern Hemisphere Winter (June, July, August)**: Tank setpoints are lowered to `T_set_tank_winter = 300.1°C`. This operates as a minimum freeze-protection threshold, allowing the bed to cool down to conserve energy while avoiding freezing.
+* **Production Months (September to May)**: Tank setpoints are set to `T_set_tank_production = 450.0°C`. This maintains the storage at operational temperature, ready to discharge heat to the process when needed.
+
+### 10.2 Configuration Operations & Regimes
+
+#### Parallel/Indirect (PI) Mode 6 Regimes
+During Mode 6 (PTC charging storage while the process runs on backup preheating), the target temperature is adjusted based on the season:
+* **Regime A (Winter/Standby)**: Mode 6 charges the tank to the freeze-protection limit of `300.1°C`.
+* **Regime B (Production)**: Mode 6 charges the tank to the readiness setpoint of `450.0°C`.
+
+#### Series/Direct (SD) Tank Heating
+In Series Direct, the Hot and Cold tanks are placed directly in the main loop. Their auxiliary heating blankets are active across all modes (Modes 1, 2, 3, 4) to maintain fluid temperatures above the active setpoint (either $450.0^\circ\text{C}$ in summer or $300.1^\circ\text{C}$ in winter).

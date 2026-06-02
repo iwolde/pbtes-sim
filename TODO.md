@@ -28,6 +28,7 @@
   - [x] **SD_MODE3_ANALYTICAL_MIXING**: Implement Option A analytical mixing for Mode 3 parallel discharging outside TESPy, running process-only TESPy network, and updating Schumann beds independently.
 - [x] **CONV_RATE_95**: Achieve >= 95% timestep convergence rate for full-year simulation (100% transient convergence verified across all 4 layouts!)
 - [x] **EBAL_CHECK**: Verify monthly energy balance error < 1%
+- [x] **WINTER_CONTROL_LOGIC**: Implement seasonal winter control logic, insulated heating blankets, and PI Mode 6 Regimes A/B (Completed 90-day simulation and verified exergy & thermal solar fractions for both Parallel/Indirect and Series/Direct layouts)
 
 ### Code Infrastructure
 

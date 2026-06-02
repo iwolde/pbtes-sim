@@ -34,7 +34,7 @@ class TESConfig:
     tank_height: float = 5.0          # m   — packed bed height
     tank_diameter: float = 7.0        # m   — internal tank diameter
     wall_thickness: float = 0.020     # m   — steel wall thickness
-    insulation_thickness: float = 0.750  # m — mineral wool / rockwool
+    insulation_thickness: float = 1.0  # m — enhanced insulation thickness (from 0.75m)
 
     # ── Fill material (rock / ceramic pebbles) ─────────────────────────
     particle_diameter: float = 0.050  # m   — dp (50 mm = typical rock)
@@ -45,7 +45,11 @@ class TESConfig:
 
     # ── Tank materials ─────────────────────────────────────────────────
     tank_conductivity: float = 45.0   # W/(m·K) — steel wall
-    insulation_conductivity: float = 0.03  # W/(m·K) — mineral wool
+    insulation_conductivity: float = 0.012  # W/(m·K) — enhanced aerogel/vacuum panel insulation (from 0.03)
+
+    # ── Tank Auxiliary Heaters ─────────────────────────────────────────
+    T_set_tank_production: float = 450.0  # °C — temperature target for operational readiness
+    T_set_tank_winter: float = 300.1      # °C — freeze protection minimum for winter mode
 
     # ── Internal computation ───────────────────────────────────────────
     grid_points: int = 20             # spatial nodes along height
@@ -450,6 +454,8 @@ def baseline_config():
         'Tank conductivity': c.tes.tank_conductivity,
         'Insulation thickness': c.tes.insulation_thickness,
         'Insulation conductivity': c.tes.insulation_conductivity,
+        'T_set_tank_production': c.tes.T_set_tank_production,
+        'T_set_tank_winter': c.tes.T_set_tank_winter,
     }
 
     component_params = {

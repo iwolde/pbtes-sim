@@ -30,10 +30,10 @@ class PTCField(ParabolicTrough):
         # Scale flow for pressure loss calculations (zeta represents pressure drop coefficient of a single row)
         import numpy as np
         m_row = i.m.val_SI / self.rows
-        self.zeta.val = (
+        self.zeta.val = max(0.0, (
             (i.p.val_SI - o.p.val_SI) * np.pi ** 2
             / (4 * (m_row) ** 2 * (i.vol.val_SI + o.vol.val_SI))
-        )
+        ))
         
         if self.energy_group.is_set:
             # Q_loss represents the total heat loss of the field

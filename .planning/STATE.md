@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Production Runs & Exergoeconomics
-status: Phase C Refinement — Implemented and verified Option B for Mode 1 Parallel/Indirect (PI) off-design (maintaining constant $T_{10} = 480^\circ\text{C}$ and letting secondary loop mass flow $m_{13}$ float), resolving the LMTD/Jacobian singularity with a custom NTU solver. Successfully ran a 90-day simulation with 100% convergence.
-last_updated: "2026-06-03T17:19:00-04:00"
+status: Phase C Refinement — Implemented a robust, manifest-based checkpointing system in run_parametric.py that handles automatic resumption and single-simulation solver failures. Added a high-speed post-processed economic sensitivity script scripts/run_economic_sensitivity.py to evaluate LCOH variables instantly, verifying 100% convergence.
+last_updated: "2026-06-03T14:40:00-04:00"
 progress:
   total_phases: 4
   completed_phases: 3
-  percent: 95
-branch: feature/winter-logic-and-aux-heaters
+  percent: 97
+branch: feature/robust-parametric-sweeps
 ---
 
 # Project State

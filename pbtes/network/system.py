@@ -496,23 +496,30 @@ class SolarThermalSystem:
                     if mode == 'design':
                         self.conn_14.set_attr(T=TES_bot + 40)
                     else:
-                        m_val = getattr(self, 'tes_charge_m', None)
-                        if m_val is None:
-                            import os, pandas as pd
-                            csv_path = os.path.join('.tespy_cache', f'base_design_{TESmode}', 'connections.csv')
-                            if os.path.exists(csv_path):
-                                try:
-                                    df = pd.read_csv(csv_path, sep=';', index_col=0)
-                                    if '13_CHSC_CHX' in df.index:
-                                        m_val = float(df.loc['13_CHSC_CHX', 'm'])
-                                        self.tes_charge_m = m_val
-                                except Exception as err:
-                                    print(f"[DEBUG error reading csv]: {err}")
-                                    pass
+                        if getattr(self, 'topology', 'Parallel') == 'Parallel':
+                            # Option B: Fix hot-side return T10 = 480 C, let secondary mass flow float
+                            self.conn_13.set_attr(m=None)
+                            self.conn_10.set_attr(T=self.conexion_params['6_T'])
+                            self.conn_14.set_attr(T=None)
+                        else:
+                            m_val = getattr(self, 'tes_charge_m', None)
                             if m_val is None:
-                                m_val = 3.0
-                        self.conn_13.set_attr(m=m_val)
-                        self.conn_14.set_attr(T=None)
+                                import os, pandas as pd
+                                csv_path = os.path.join('.tespy_cache', f'base_design_{TESmode}', 'connections.csv')
+                                if os.path.exists(csv_path):
+                                    try:
+                                        df = pd.read_csv(csv_path, sep=';', index_col=0)
+                                        if '13_CHSC_CHX' in df.index:
+                                            m_val = float(df.loc['13_CHSC_CHX', 'm'])
+                                            self.tes_charge_m = m_val
+                                    except Exception as err:
+                                        print(f"[DEBUG error reading csv]: {err}")
+                                        pass
+                                if m_val is None:
+                                    m_val = 3.0
+                            self.conn_13.set_attr(m=m_val)
+                            self.conn_14.set_attr(T=None)
+
             
             if not is_series_direct:
                 self.preheater_hx.set_attr(Q=0)
@@ -761,7 +768,7 @@ class SolarThermalSystem:
  
     def _apply_design_guesses(self, design_path_full: str) -> None:
         """Load connection T0, m0, h0 from design CSV as initial guesses for offdesign."""
-        import os, pandas as pd
+        import os, pandas as pd, numpy as np
         csv = os.path.join(design_path_full, 'connections.csv')
         if not os.path.exists(csv):
             return
@@ -813,56 +820,51 @@ class SolarThermalSystem:
                 m_charge_guess = max(0.5, min(m_charge_guess, 100.0))
                 m_ptc_guess = m_process_guess + m_charge_guess
                 
-                # Counter-flow NTU effectiveness model for charge_tes_hx
+                # Option B custom guess solver
                 kA = getattr(self, 'charge_hx_kA', None)
                 if kA is None:
                     kA = 20000.0
                 
-                m_cold = getattr(self, 'tes_charge_m', None)
-                if m_cold is None:
-                    m_cold = float(df.loc['13_CHSC_CHX', 'm'])
-                m_cold = max(0.5, m_cold)
+                # Option B: T_hot_in = 520.0, T_hot_out = 480.0, T_cold_in = T_cold_in
+                Q_transfer = m_charge_guess * 960.0 * (520.0 - 480.0)
+                LMTD_target = Q_transfer / kA
+                dT2 = 480.0 - T_cold_in # lower temperature difference
                 
-                m_hot = m_charge_guess
-                cp = 960.0
-                C_h = m_hot * cp
-                C_c = m_cold * cp
-                C_min = min(C_h, C_c)
-                C_max = max(C_h, C_c)
-                C_r = C_min / C_max
+                # Solve for dT1 = 520.0 - T14_guess such that LMTD(dT1, dT2) = LMTD_target
+                low, high = 0.01, 500.0
+                for _ in range(30):
+                    mid = (low + high) / 2.0
+                    if abs(mid - dT2) < 1e-4:
+                        L_val = mid
+                    else:
+                        L_val = (mid - dT2) / np.log(mid / dT2)
+                    
+                    if L_val < LMTD_target:
+                        low = mid
+                    else:
+                        high = mid
+                dT1_guess = mid
+                T14_guess = 520.0 - dT1_guess
+                T14_guess = max(T_cold_in + 2.0, min(T14_guess, 518.0))
                 
-                NTU = kA / C_min
-                import numpy as np
-                if C_r < 0.999:
-                    exp_val = np.exp(-NTU * (1.0 - C_r))
-                    eff = (1.0 - exp_val) / (1.0 - C_r * exp_val)
-                else:
-                    eff = NTU / (NTU + 1.0)
+                m_cold_guess = Q_transfer / (960.0 * (T14_guess - T_cold_in))
+                m_cold_guess = max(0.5, min(m_cold_guess, 500.0))
                 
-                T_hot_in = 520.0
-                Q_transfer = eff * C_min * (T_hot_in - T_cold_in)
-                T_hot_out_est = T_hot_in - Q_transfer / C_h
-                T_cold_out_est = T_cold_in + Q_transfer / C_c
-                
-                T_hot_out_est = max(T_cold_in + 2.0, min(T_hot_out_est, T_hot_in - 2.0))
-                T_cold_out_est = max(T_cold_in + 2.0, min(T_cold_out_est, T_hot_in - 2.0))
-                
-                T10_guess = T_hot_out_est
-                T14_guess = T_cold_out_est
+                T10_guess = 480.0
                 
                 T_merge_guess = (m_process_guess * 480.0 + m_charge_guess * T10_guess) / m_ptc_guess
                 
                 custom_guesses = {
                     '01_CC_PTC': {'m': m_ptc_guess, 'T': T_merge_guess},
-                    '02_PTC_SP1': {'m': m_ptc_guess, 'T': T_hot_in},
-                    '04_SP1_PH': {'m': m_process_guess, 'T': T_hot_in},
-                    '05_PH_PR': {'m': m_process_guess, 'T': T_hot_in},
+                    '02_PTC_SP1': {'m': m_ptc_guess, 'T': 520.0},
+                    '04_SP1_PH': {'m': m_process_guess, 'T': 520.0},
+                    '05_PH_PR': {'m': m_process_guess, 'T': 520.0},
                     '06_PR_MG2': {'m': m_process_guess, 'T': 480.0},
                     '08_MG2_CC': {'m': m_ptc_guess, 'T': T_merge_guess},
-                    '09_SP1_CHX': {'m': m_charge_guess, 'T': T_hot_in},
+                    '09_SP1_CHX': {'m': m_charge_guess, 'T': 520.0},
                     '10_CHX_MG2': {'m': m_charge_guess, 'T': T10_guess},
-                    '13_CHSC_CHX': {'m': m_cold, 'T': T_cold_in},
-                    '14_CHX_CHSK': {'m': m_cold, 'T': T14_guess},
+                    '13_CHSC_CHX': {'m': m_cold_guess, 'T': T_cold_in},
+                    '14_CHX_CHSK': {'m': m_cold_guess, 'T': T14_guess},
                 }
             except Exception as e:
                 print(f"[DEBUG _apply_design_guesses error]: {e}")
@@ -938,9 +940,10 @@ class SolarThermalSystem:
                 continue
             try:
                 row = df.loc[label]
-                m0 = float(row.get('m', 30))
-                h0 = float(row.get('h', 700))
-                T0 = float(row.get('T', 500))
+                m0 = float(row.get('m', 30.0))
+                h0 = float(row.get('h', 700.0))
+                p0 = float(row.get('p', 5.0))
+                T0 = float(row.get('T', 500.0))
                 
                 if custom_guesses is not None and str(label) in custom_guesses:
                     m0 = custom_guesses[str(label)]['m']
@@ -957,6 +960,14 @@ class SolarThermalSystem:
                         m0 = m0 * m_scale
                     
                 conn.set_attr(m0=m0, h0=h0, T0=T0)
+                
+                # Directly assign starting values for variables to let the solver warm-start cleanly
+                if hasattr(conn.m, 'is_var') and conn.m.is_var:
+                    conn.m.val = m0
+                if hasattr(conn.h, 'is_var') and conn.h.is_var:
+                    conn.h.val = h0
+                if hasattr(conn.p, 'is_var') and conn.p.is_var:
+                    conn.p.val = p0
             except Exception:
                 pass
 
@@ -1008,7 +1019,9 @@ class SolarThermalSystem:
                 self._apply_design_guesses(design_path_full)
             kwargs = {'mode': mode, 'max_iter': 200, 'design_path': design_path_full}
             if use_init_path:
-                kwargs['init_path'] = design_path_full
+                is_m1_parallel = (TESmode == '1' and getattr(self, 'topology', 'Parallel') == 'Parallel')
+                if not is_m1_parallel:
+                    kwargs['init_path'] = design_path_full
             self.network.solve(**kwargs)
             #if not self.network.converged:
             #    raise RuntimeError("TESPy solver did not converge.")

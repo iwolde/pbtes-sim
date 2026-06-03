@@ -2,9 +2,8 @@
 gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Production Runs & Exergoeconomics
-status: Phase C Refinement — Compiled a comprehensive debugging guide (.planning/MODE1_PI_DEBUGGING.md) detailing the off-design convergence failures, thermodynamic pinch-point limits, and randomization guess bugs for Mode 1 Parallel/Indirect (PI) configuration under transient conditions.
-
-last_updated: "2026-06-02T16:37:00-04:00"
+status: Phase C Refinement — Implemented and verified Option B for Mode 1 Parallel/Indirect (PI) off-design (maintaining constant $T_{10} = 480^\circ\text{C}$ and letting secondary loop mass flow $m_{13}$ float), resolving the LMTD/Jacobian singularity with a custom NTU solver. Successfully ran a 90-day simulation with 100% convergence.
+last_updated: "2026-06-03T17:19:00-04:00"
 progress:
   total_phases: 4
   completed_phases: 3

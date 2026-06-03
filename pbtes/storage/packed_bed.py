@@ -27,6 +27,7 @@ class ThermalEnergyStorage:
         self.dt = dt  # seconds
         self.name = name
         self.state = 'charge'  # default state
+        self.profile_orientation = 'charge'  # track actual orientation of the profile array
         self.inlet = 'top'
         self.outlet = 'bottom'
         self.valve_state = 'off'  # Valve controlling the TES flow
@@ -305,10 +306,11 @@ class ThermalEnergyStorage:
         new_state : str
             The new state ('charge', 'discharge', 'standby').
         """
-        if new_state != self.state: 
-            if new_state in ['charge', 'discharge']:
+        if new_state in ['charge', 'discharge']:
+            if new_state != getattr(self, 'profile_orientation', 'charge'):
                 self.inlet, self.outlet = self.outlet, self.inlet
                 self.profile = np.flip(self.profile)
+                self.profile_orientation = new_state
         self.state = new_state
 
     def calculate_SoC(self, profile):

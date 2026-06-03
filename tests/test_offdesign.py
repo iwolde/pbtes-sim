@@ -59,6 +59,9 @@ def design_then_offdesign(mode, e_values, **kwargs):
         if sys_o is None:
             sys_o = SolarThermalSystem(tes_params=TES_P, component_params=COMP_P, conexion_params=CONN_P,
                                         HTF='INCOMP::NaK', topology='Parallel', tank_config='indirect')
+            if mode == 1:
+                sys_o.charge_hx_kA = sys_d.charge_tes_hx.kA.val
+                sys_o.ptc_field_A_designed = sys_d.ptc_field.A.val
             if mode == 6:
                 sys_o.charge_hx_kA = 150213
             if mode == 3:

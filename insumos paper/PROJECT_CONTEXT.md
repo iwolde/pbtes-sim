@@ -168,6 +168,7 @@ codigos/
 ├── scripts/                      ← Post-processing pipeline
 │   ├── run_postprocess.py        ← Pump power + LCOH from results CSV
 │   ├── run_exergoeconomics.py    ← Exergoeconomic post-processing
+│   ├── run_economic_sensitivity.py ← Post-processed economic sensitivity sweeps
 │   ├── run_assessment_05_analysis.py
 │   ├── run_assessment_06_figures.py
 │   ├── run_assessment_07_synthesis.py

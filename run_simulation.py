@@ -91,6 +91,7 @@ def run_single_simulation(
     tank_height=5.0,
     particle_diameter=0.050,
     void_fraction=0.4,
+    insulation_thickness=1.0,
     T_init=None
 ):
     # Load baseline parameters
@@ -107,6 +108,7 @@ def run_single_simulation(
     tes_params['Tank length'] = tank_height
     tes_params['Particle diameter'] = particle_diameter
     tes_params['Void fraction'] = void_fraction
+    tes_params['Insulation thickness'] = insulation_thickness
 
     # Apply HTF overrides if they differ from baseline
     if htf != 'INCOMP::NaK':
@@ -194,7 +196,8 @@ def run_single_simulation(
             'tank_diameter': tank_diameter,
             'tank_height': tank_height,
             'particle_diameter': particle_diameter,
-            'void_fraction': void_fraction
+            'void_fraction': void_fraction,
+            'insulation_thickness': insulation_thickness
         },
         'tes_params': tes_params,
         'component_params': component_params,
@@ -239,6 +242,7 @@ def main():
     parser.add_argument('--tank_height', type=float, default=5.0, help="TES packed bed height (Tank length) in m.")
     parser.add_argument('--particle_diameter', type=float, default=0.050, help="Packed bed particle diameter in m.")
     parser.add_argument('--void_fraction', type=float, default=0.4, help="Packed bed void fraction (porosity).")
+    parser.add_argument('--insulation_thickness', type=float, default=1.0, help="TES tank insulation thickness in m.")
     parser.add_argument('--T_init', type=float, default=None, help="TES uniform initial temperature override in °C.")
     
     args = parser.parse_args()
@@ -254,6 +258,7 @@ def main():
         tank_height=args.tank_height,
         particle_diameter=args.particle_diameter,
         void_fraction=args.void_fraction,
+        insulation_thickness=args.insulation_thickness,
         T_init=args.T_init
     )
 

@@ -3,7 +3,7 @@ import CoolProp.CoolProp as CP
 from pbtes import ThermalEnergyStorage
 import numpy as np
 
-# Using 'INCOMP::NaK' for Molten Salt as found in mainV5_5.py
+# Using 'INCOMP::NaK' for Solar Salt as found in mainV5_5.py
 # Using 'Water' as another fluid for testing boundaries.
 @pytest.mark.parametrize("fluid, min_temp, max_temp", [
     ("INCOMP::NaK", 10 + 273.15, 700 + 273.15),

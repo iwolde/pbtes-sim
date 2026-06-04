@@ -132,7 +132,7 @@ class Solver:
             T_min_discharge = t_proc_set  # 480 C - SD: preheater tops up
         else:
             T_min_discharge = t_proc_set + 5.0  # 485 C - PI/indirect with Regime B support
-        T_max_discharge = 580              # NaK safe limit - 20, expanded range
+        T_max_discharge = 580              # Solar Salt limit - 20, expanded range
         
         # Calculate State of Charge (SOC)
         if is_series_direct:

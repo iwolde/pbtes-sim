@@ -34,7 +34,7 @@
 - 5.3 Dynamic zinc pool behavior
 - 5.4 Topology comparison (Parallel vs Series)
 - 5.5 Tank configuration comparison (Direct vs Indirect)
-- 5.6 HTF comparison (NaK vs Air)
+- 5.6 HTF comparison (Solar Salt vs Air)
 - 5.7 Parametric analysis (solar multiple, TES volume)
 
 ### 6. Economic Analysis
@@ -56,13 +56,13 @@
 7. Zinc pool temperature (year)
 8. Parallel vs Series solar fraction
 9. Direct vs Indirect comparison
-10. NaK vs Air comparison
+10. Solar Salt vs Air comparison
 11. Solar fraction vs solar multiple
 12. LCOH vs TES volume
 13. Sensitivity tornado
 
 ## Key Decisions
-- HTF: NaK (primary), Air (comparison)
+- HTF: Solar Salt (primary), Air (comparison)
 - Zinc pool: always ON (dynamic demand)
 - Plant: hypothetical reference design
 - PBTES model: pre-validated from prior article

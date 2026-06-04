@@ -6,12 +6,12 @@ This document provides a highly detailed, authoritative mathematical and physica
 
 ## 1. System-Wide Fluid & Dynamic Load Physics
 
-### 1.1 Heat Transfer Fluid: Sodium-Potassium Alloy (NaK)
-The primary Heat Transfer Fluid (HTF) is the eutectic sodium-potassium alloy, represented as `INCOMP::NaK` via the CoolProp library. Eutectic NaK ($78\%\text{ K}$, $22\%\text{ Na}$) is chosen for its superior thermodynamic properties in high-temperature applications:
-* **Operating Range**: Eutectic liquid from $-12.7^\circ\text{C}$ to $785^\circ\text{C}$ at atmospheric pressure. The simulation clamps the primary working range between $300^\circ\text{C}$ and $600^\circ\text{C}$ to prevent thermal degradation and keep viscosity low.
-* **Density ($\rho$)**: Highly temperature-dependent, varying from $\sim 850\text{ kg/m}^3$ at $300^\circ\text{C}$ to $\sim 780\text{ kg/m}^3$ at $600^\circ\text{C}$. This requires transient volume-expansion modeling during charging/discharging.
-* **Specific Heat ($c_p$)**: Roughly constant around $950\text{ J/(kg}\cdot\text{K)}$ to $980\text{ J/(kg}\cdot\text{K)}$.
-* **Thermal Conductivity ($k$)**: High liquid-metal conductivity ($\sim 25\text{ W/(m}\cdot\text{K)}$), which minimizes boundary layer resistance in heat exchangers but increases natural thermal conduction in the stored packed bed.
+### 1.1 Heat Transfer Fluid: Solar Salt
+The primary Heat Transfer Fluid (HTF) is Solar Salt (commercial molten sodium-potassium nitrate salt), represented as `INCOMP::NaK` via the CoolProp library. Solar Salt is chosen for its widespread commercial use, cost-effectiveness, and thermal stability in high-temperature applications:
+* **Operating Range**: Liquid phase up to $600^\circ\text{C}$. The simulation clamps the primary working range between $300^\circ\text{C}$ and $600^\circ\text{C}$ to prevent freezing/crystallization and thermal degradation.
+* **Density ($\rho$)**: Highly temperature-dependent, varying from $\sim 1900\text{ kg/m}^3$ at $300^\circ\text{C}$ to $\sim 1700\text{ kg/m}^3$ at $600^\circ\text{C}$ (modeled via the database properties of `INCOMP::NaK`). This requires transient volume-expansion modeling during charging/discharging.
+* **Specific Heat ($c_p$)**: Sized in the range of 1500 J/(kg·K).
+* **Thermal Conductivity ($k$)**: Standard molten salt conductivity (~0.53 W/(m·K)).
 
 ### 1.2 The Dynamic Zinc Galvanizing Bath (Process Load)
 The plant serves an industrial zinc galvanizing bath, which is modeled as a dynamic lumped-capacitance thermal system. Unlike standard static process heat demands, the load is highly transient and depends on the operating schedule:
@@ -139,7 +139,7 @@ In design mode, the primary split ratio, HX conductance, and mass flows are size
 1. **Solar Splitting Balance**:
    $$\dot{m}_{\text{ptc}} = \dot{m}_{\text{proc}} + \dot{m}_{\text{charge,primary}}$$
 2. **Process Heat Duty**:
-   $$\dot{Q}_{\text{proc}} = \dot{m}_{\text{proc}} \cdot c_{p,\text{NaK}} \left(T_5 - T_6\right) = 450\text{ kW}$$
+   $$\dot{Q}_{\text{proc}} = \dot{m}_{\text{proc}} \cdot c_{p,\text{HTF}} \left(T_5 - T_6\right) = 450\text{ kW}$$
    where $T_5 = 520^\circ\text{C}$ and $T_6 = 480^\circ\text{C}$ are fixed boundary constraints.
 3. **TES Sizing (Logarithmic Mean Temperature Difference)**:
    The sizing of the `Charge_TES_HX` is governed by the terminal temperature difference constraint ($ttd_l = 20.0\text{ K}$):
@@ -179,14 +179,14 @@ The Series Direct configuration routes the HTF through all components sequential
 ```
 
 #### 4.2.1 Direct-Contact Modeling in TESPy
-The Hot and Cold tanks are represented inside the TESPy network as `SimpleHeatExchanger` components (`hot_tank_hx` and `cold_tank_hx`). Unlike full heat exchangers, these represent a direct single-phase pressure drop and enthalpy change as the NaK passes through the rock bed. The coupling variables are the outlet temperatures, set as primary connection boundary conditions:
+The Hot and Cold tanks are represented inside the TESPy network as `SimpleHeatExchanger` components (`hot_tank_hx` and `cold_tank_hx`). Unlike full heat exchangers, these represent a direct single-phase pressure drop and enthalpy change as the Solar Salt passes through the rock bed. The coupling variables are the outlet temperatures, set as primary connection boundary conditions:
 * **Hot Tank Outlet**: $\text{conn\_ht\_ph.T} = T_{\text{hot,out}}$ (bottom of the Hot Tank bed)
 * **Cold Tank Outlet**: $\text{conn\_10.T} = T_{\text{cold,out}}$ (bottom of the Cold Tank bed)
 
 #### 4.2.2 The Cold-Tank Thermodynamic "Lockup" & Auxiliary Preheater Fix
 A major physical challenge arises when the Hot and Cold tanks are cold (e.g., initialized at low temperatures or depleted during long discharge periods). 
 * **The Physics of Lockup**: During Mode 1 charging, the HTF must flow from the PTC, through the Hot Tank, and then into the process. If the Hot Tank is depleted, its outlet temperature $T_{\text{hot,out}}$ (bottom node) drops to around $300^\circ\text{C}$. If the Preheater is constrained to `Q=0` (solar-only), the fluid enters the Process HX at $T_5 = T_{\text{hot,out}} \approx 300^\circ\text{C}$. 
-* **Thermodynamic Bound Violation**: The Process HX extracts heat to serve the galvanizing bath, forcing the return temperature $T_6$ to fall dramatically below the melting/liquid limits. In CoolProp, attempting to evaluate NaK properties below the physical bounds ($300.1^\circ\text{C}$) results in immediately divergent density calculations and matrix singularity failures.
+* **Thermodynamic Bound Violation**: The Process HX extracts heat to serve the galvanizing bath, forcing the return temperature $T_6$ to fall dramatically below the melting/liquid limits. In CoolProp, attempting to evaluate Solar Salt properties below the physical bounds ($300.1^\circ\text{C}$) results in immediately divergent density calculations and matrix singularity failures.
 * **The Adaptive Preheater Control Logic**:
   To resolve this thermodynamic lockup, an **Adaptive Auxiliary Preheater Block** is implemented in `system.py`:
   $$\begin{cases}
@@ -220,7 +220,7 @@ To prevent flow-reversal and splitting matrix singularities in TESPy during disc
 3. **Control Saturation Constraints**:
    * **Cold Preservation**: If $T_{\text{cold}} \ge 520^\circ\text{C}$, the system prioritizes discharging the Cold Tank ($r \to 0$) to preserve high-grade Hot Tank heat.
    * **Depletion / Auxiliary Shortfall**: If $T_{\text{hot}} < 520^\circ\text{C}$, the Hot Tank alone cannot meet the target. The system saturates the valve to draw exclusively from the Hot Tank ($\dot{m}_{\text{hot}} = \dot{m}_{\text{total}}$, $\dot{m}_{\text{cold}} = 0$). The mixed temperature is $T_{\text{mix}} = T_{\text{hot}}$, and the auxiliary preheater provides the remaining heating rate:
-     $$\dot{Q}_{\text{aux}} = \dot{m}_{\text{total}} \cdot c_{p,\text{NaK}} \left(520^\circ\text{C} - T_{\text{hot}}\right)$$
+     $$\dot{Q}_{\text{aux}} = \dot{m}_{\text{total}} \cdot c_{p,\text{HTF}} \left(520^\circ\text{C} - T_{\text{hot}}\right)$$
 4. **Schumann Model Updates**:
    During discharging, fluid enters the **bottom** of the tanks at the process return temperature ($480^\circ\text{C}$) and exits from the **top**. The Schumann models for both beds are updated independently using their respective analytical mass flows $\dot{m}_{\text{hot}}$ and $\dot{m}_{\text{cold}}$.
 
@@ -229,8 +229,8 @@ To prevent flow-reversal and splitting matrix singularities in TESPy during disc
 ### 4.3 Parallel Direct (PD) Configuration
 
 The Parallel Direct configuration combines the split-flow layout of Parallel with the direct-contact tank layout of Direct.
-* **Charging Path (Mode 1)**: The primary split divides the NaK leaving the PTC:
-  * **TES Branch**: Hot NaK at PTC outlet temperature ($\sim 560^\circ\text{C}$) flows directly into the top of the **Hot Tank**, charging it at the highest thermal potential.
+* **Charging Path (Mode 1)**: The primary split divides the Solar Salt leaving the PTC:
+  * **TES Branch**: Hot Solar Salt at PTC outlet temperature ($\sim 560^\circ\text{C}$) flows directly into the top of the **Hot Tank**, charging it at the highest thermal potential.
   * **Process Branch**: Fluid flows through the Preheater and Process HX, delivering $450\text{ kW}$. The cooler return fluid ($\sim 480^\circ\text{C}$) flows directly into the **Cold Tank**, charging it.
   * Both branches merge after exiting the bottoms of the respective tanks and return to the primary pump.
 * **Discharging Path (Mode 3)**: Solved analytically using Option A (parallel tank discharging through the mixing valve), identical to the Series Direct discharging formulation.
@@ -240,7 +240,7 @@ The Parallel Direct configuration combines the split-flow layout of Parallel wit
 ### 4.4 Series Indirect (SI) Configuration
 
 The Series Indirect configuration routes fluid sequentially in a single loop, but uses a decoupling heat exchanger and a secondary pump for the storage loop.
-* **Charging Path (Mode 1)**: Eutectic NaK flows sequentially: PTC $\to$ Preheater HX $\to$ Process HX $\to$ Charge HX $\to$ PTC.
+* **Charging Path (Mode 1)**: Solar Salt flows sequentially: PTC $\to$ Preheater HX $\to$ Process HX $\to$ Charge HX $\to$ PTC.
   * **Thermodynamic Sizing Constraint**: Because the Charge HX is located downstream of the process, it only receives fluid *after* the process has extracted heat. This limits the maximum charging fluid temperature to the process return level ($\sim 480^\circ\text{C}$).
   * **Conductance Sizing**: The Charge HX must be sized at the lower temperature level, resulting in a larger required physical surface area ($kA$) to transfer the same thermal power compared to Parallel configurations.
 * **Discharging Path (Mode 3)**: Utilizes a dedicated Discharge HX and a secondary discharge pump to transfer energy from the secondary loop to the process loop, matching the Parallel Indirect discharge equations.
@@ -272,7 +272,7 @@ The pressure drop across the PBTES packed beds ($\Delta p_{\text{bed}}$) is calc
 $$\frac{\Delta p_{\text{bed}}}{H} = 150 \frac{(1 - \varepsilon)^2}{\varepsilon^3} \frac{\mu_f \cdot u_0}{d_p^2} + 1.75 \frac{1 - \varepsilon}{\varepsilon^3} \frac{\rho_f \cdot u_0^2}{d_p}$$
 where:
 * **$u_0$**: Superficial velocity ($u_0 = u \cdot \varepsilon = \dot{m} / (\rho_f A_{\text{bed}})$).
-* **$\mu_f$**: Dynamic viscosity of eutectic NaK, updated transiently based on local temperatures.
+* **$\mu_f$**: Dynamic viscosity of Solar Salt, updated transiently based on local temperatures.
 * **$H$**: Structural height of the packed bed ($5.0\text{ m}$ baseline).
 
 ### 6.3 Pumping Power and Solar Fraction Integration
@@ -286,7 +286,7 @@ where $\eta_{\text{power\_cycle}} = 0.35$ represents the baseline thermal power 
 
 ## 7. Seasonal Winter Control Logic & Tank Auxiliary Heaters
 
-To ensure the physical integrity of the plant during periods of low solar resource (Southern Hemisphere winter: June, July, and August) and prevent eutectic NaK from cooling below the CoolProp property limits ($300.1^\circ\text{C}$), an active **Tank Auxiliary Heating System** and a **Winter Control Logic** are integrated.
+To ensure the physical integrity of the plant during periods of low solar resource (Southern Hemisphere winter: June, July, and August) and prevent Solar Salt from cooling below the CoolProp property limits ($300.1^\circ\text{C}$), an active **Tank Auxiliary Heating System** and a **Winter Control Logic** are integrated.
 
 ### 7.1 Tank Heater Blanket Physical Model
 The tank auxiliary heaters are modeled as electric blankets wrapped around the steel tank walls (sandwiched between the steel wall and outer insulation). 
@@ -323,4 +323,4 @@ The dynamic target setpoint $T_{\text{set}}$ is governed by the seasonal `Winter
    - **Regime A (Winter/Standby)**: Mode 6 charges/maintains the tank at $T_{\text{set\_winter}} = 300.1^\circ\text{C}$.
    - **Regime B (Production)**: Mode 6 charges/maintains the tank at $T_{\text{set\_production}} = 450.0^\circ\text{C}$.
 2. **Series/Direct (SD) Heating Modes**:
-   Since the direct-contact beds are directly in the primary loop, the Hot and Cold tank blankets are active across all modes (Modes 1, 2, 3, 4) to clamp NaK temperatures to the active setpoint (either $450.0^\circ\text{C}$ or $300.1^\circ\text{C}$).
+   Since the direct-contact beds are directly in the primary loop, the Hot and Cold tank blankets are active across all modes (Modes 1, 2, 3, 4) to clamp Solar Salt temperatures to the active setpoint (either $450.0^\circ\text{C}$ or $300.1^\circ\text{C}$).

@@ -14,7 +14,7 @@
 - Post-processing pipeline (pump power via Ergun equation)
 
 **Phase C — Physics & Convergence** (In Progress)
-- Fix Mode 1 offdesign convergence for NaK
+- Fix Mode 1 offdesign convergence for Solar Salt
 - Fix Mode 6 design ("too many parameters")
 - Converge all 6 modes for all 4 topologies
 - Create `pbtes/analysis/convergence.py`
@@ -22,7 +22,7 @@
 **Phase D — Results & Publication** (Not Started)
 - Full-year simulations for all configurations
 - Parametric sweeps (aperture, TES volume, topology)
-- HTF comparison (NaK vs Air)
+- HTF comparison (Solar Salt vs Air)
 - 14+ publication figures
 - LCOH and exergoeconomic analysis
 - Paper draft
@@ -33,7 +33,7 @@
 - Parallel/Series equation system validation
 - Mode transition integration testing
 - Thermodynamic consistency verification (1st and 2nd law energy balances)
-- CoolProp constraint limits against NaK boundaries
+- CoolProp constraint limits against Solar Salt boundaries
 
 ## v1.0 PBTES Pipeline MVP (Shipped: 2026-04-23)
 
@@ -41,4 +41,4 @@
 - PTC field, PBTES, zinc pool, and economic models integrated
 - Automated parametric sweep infrastructure
 - LCOH calculation and publication-quality graph generation
-- HTF comparison framework (NaK/Air)
+- HTF comparison framework (Solar Salt/Air)

@@ -2,12 +2,12 @@
 gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Production Runs & Exergoeconomics
-status: Phase C Refinement — Implemented a robust, manifest-based checkpointing system in run_parametric.py that handles automatic resumption and single-simulation solver failures. Added a high-speed post-processed economic sensitivity script scripts/run_economic_sensitivity.py to evaluate LCOH variables instantly, verifying 100% convergence.
-last_updated: "2026-06-03T14:40:00-04:00"
+status: Phase C Refinement — Conducted a comprehensive physical and thermodynamic assessment of all components, identifying a 20x heat loss bug, fluid properties mismatch, and Peclet clipping behaviors. Corrected the PBTES heat loss calculations in packed_bed.py, validated via pytest.
+last_updated: "2026-06-04T11:25:00-04:00"
 progress:
   total_phases: 4
   completed_phases: 3
-  percent: 97
+  percent: 98
 branch: feature/robust-parametric-sweeps
 ---
 
@@ -22,6 +22,8 @@ Key design elements implemented:
 - Hot/Cold tank outlet temperatures are coupled iteratively from the 1D Schumann model.
 - Redundant and over-specifying constraints (such as `T_05 = 520°C` in Mode 1) have been resolved using conditional boundary conditions.
 - Mode 3 discharging utilizes Option A (Analytical Mixing) outside TESPy, achieving robust convergence.
+- Resolved spatial discretization conduction resistance and convective boundary area bugs in `packed_bed.py` heat loss calculations, reducing standby losses to physical levels.
+
 
 All 6 modes across all 4 layouts now converge reliably.
 
@@ -29,7 +31,7 @@ See `TODO.md` for the active checklist.
 
 ## Key Decisions (settled — do not revisit)
 
-- **HTF**: NaK (`INCOMP::NaK`) primary; Air for comparison
+- **HTF**: Solar Salt (`INCOMP::NaK` in CoolProp) primary; Air for comparison
 - **Zinc pool**: Always ON (mandatory for production); fixed-demand legacy mode available for testing
 - **Pump power**: Post-processed via Ergun equation (NOT inline)
 - **Entry points**: `run_simulation.py` and `run_parametric.py` only
@@ -55,7 +57,10 @@ See `TODO.md` for the active checklist.
 | Project context | `insumos paper/PROJECT_CONTEXT.md` | Current |
 | Physics & coupling methodology | `insumos paper/PHYSICS_METHODOLOGY.md` | Current |
 | Zinc pool methodology | `insumos paper/zinc_pool_model_methodology.md` | Current |
+| Zinc pool transient methodology | `insumos paper/zinc_pool_transient_methodology.md` | Created |
+| Article LaTeX Methodology | `insumos paper/article_methodology.txt` | Created |
 | Task list | `TODO.md` | Active |
 | Agent instructions | `AGENTS.md` | Current (2026-05-21) |
+
 
 

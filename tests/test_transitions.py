@@ -154,12 +154,12 @@ def test_mass_flow_routing(system_params):
 
 
 @pytest.mark.xfail(
-    reason="Mode 1 design with NaK pushes fluid properties out of TESPy range. "
+    reason="Mode 1 design with Solar Salt pushes fluid properties out of TESPy range. "
            "Known convergence issue — fix in Phase C (physics tuning).",
     strict=False,
 )
 def test_mass_flow_routing_mode1(system_params):
-    """Mode 1 (charge TES) mass-flow check — xfail until NaK convergence is fixed."""
+    """Mode 1 (charge TES) mass-flow check — xfail until Solar Salt convergence is fixed."""
     solver = Solver(**system_params)
     profile = np.ones(20) * 500
 

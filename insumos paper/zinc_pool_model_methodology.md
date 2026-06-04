@@ -125,7 +125,7 @@ process side and the supply side of the system.
 ### 4.2 Process Heat Exchanger Coupling
 
 The process heat exchanger (HX) is a shell-and-tube or similar unit where the
-hot-side HTF (e.g., NaK or Solar Salt) transfers heat to the zinc bath. In the
+hot-side HTF (e.g., Solar Salt) transfers heat to the zinc bath. In the
 TESPy network, it is modelled as a `SimpleHeatExchanger` component. The
 coupling operates as follows:
 

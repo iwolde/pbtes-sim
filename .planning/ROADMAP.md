@@ -34,7 +34,7 @@
   2. Monthly energy balance error < 1%.
   3. All 6 modes converge for Parallel, Series, Direct, and Indirect configurations.
   4. Mode 6 design passes (no "too many parameters" error).
-  5. Mode 1 offdesign converges for NaK fluid.
+  5. Mode 1 offdesign converges for Solar Salt fluid.
   6. All results stored as CSV in `results/` with metadata headers.
 **Tasks**: See `TODO.md` — Phase C section.
 **Status**: In progress
@@ -47,7 +47,7 @@
   1. All 13+ key figures generated in SVG/PDF at 300 DPI.
   2. LCOH values within ±30% of literature benchmarks.
   3. Sensitivity analysis (tornado chart) completed.
-  4. HTF comparison (NaK vs Air) completed.
+  4. HTF comparison (Solar Salt vs Air) completed.
   5. All outputs organized in `article_results/`.
 **Tasks**: See `TODO.md` — Phase D section.
 **Status**: Not started

@@ -84,7 +84,8 @@ class SolarThermalSystem:
         self.cycle_closer = tpc.CycleCloser(label='CycleCloser')
         if mode in [1, 2, 5, 6]:
             from pbtes.components import PTCField
-            self.ptc_field = PTCField(label='PTCField', rows=self.rows, modules=self.modules)
+            use_inhouse = self.component_params.get('use_inhouse_ptc', False)
+            self.ptc_field = PTCField(label='PTCField', rows=self.rows, modules=self.modules, use_inhouse_ptc=use_inhouse)
         else:
             self.ptc_field = None
 
@@ -114,7 +115,11 @@ class SolarThermalSystem:
                 # design=['ttd_l']: explicitly sizes the HX at the design point.
                 # ttd_l = T_hot_out - T_cold_in = T10 - T13.
                 # Series flow: T10 = T05 = 520°C (preheater Q=0), T13 = 400°C → ttd_l = 120 K.
-                self.high_t_charge_hx.set_attr(design=['ttd_l'], offdesign=['kA'])
+                use_inhouse = self.component_params.get('use_inhouse_ptc', False)
+                if use_inhouse:
+                    self.high_t_charge_hx.set_attr(design=[], offdesign=['kA'])
+                else:
+                    self.high_t_charge_hx.set_attr(design=['ttd_l'], offdesign=['kA'])
                 self.tes_ch_source = tpc.Source('TES_charge_inlet_source')
                 self.tes_ch_sink   = tpc.Sink('TES_charge_outlet_sink')
             else:
@@ -433,6 +438,19 @@ class SolarThermalSystem:
         mode 6: Mid to high irradiation, PTC full to TES (auxiliary heater supplies process)
         """
         self._current_irr_for_guess = current_irr
+        use_inhouse = self.component_params.get('use_inhouse_ptc', False)
+        if use_inhouse:
+            from pbtes.components.ptc_model import PTCFieldModel
+            ptc_model = PTCFieldModel(self.component_params)
+            ptc_model.design_solar_field(self.component_params['ptc_A'], self.HTF)
+            m_ptc_design = ptc_model.m_dot_PTC_real * ptc_model.N_loops_real
+            if getattr(self, 'topology', 'Parallel') == 'Parallel' and TESmode == '1':
+                T_ptc_design = 520.0
+                m_process_design = abs(self.component_params.get('PR_Q', 450000.0)) / (960.0 * 40.0)
+                m_ptc_design = max(m_ptc_design, m_process_design + 2.0)
+            else:
+                T_ptc_design = 560.0
+
         if profile is None:
             if hasattr(self, 'tes') and self.tes is not None and self.tes.profile is not None:
                 profile = self.tes.profile
@@ -464,7 +482,10 @@ class SolarThermalSystem:
                 hot_bot = self.hot_tes.profile[-1]
                 cold_bot = self.cold_tes.profile[-1]
                 self.conn_ht_ph.set_attr(T=hot_bot)
-                self.conn_02.set_attr(T=560)
+                if use_inhouse:
+                    self.conn_02.set_attr(T=T_ptc_design, m=m_ptc_design)
+                else:
+                    self.conn_02.set_attr(T=560)
                 self.conn_10.set_attr(T=cold_bot)
                 self.ptc_field.set_attr(
                     A=self.component_params['ptc_A'],  # fixed max aperture always
@@ -531,12 +552,47 @@ class SolarThermalSystem:
                 # SD M1: conn_05.T and conn_06.T intentionally not set (see create_network).
                 # For non-SD Series topology with indirect tank:
                 if getattr(self, 'topology', 'Parallel') == 'Series' and not is_series_direct:
-                    self.ptc_field.set_attr(A='var')
+                    if not use_inhouse:
+                        self.ptc_field.set_attr(A='var')
+                if use_inhouse and not is_series_direct:
+                    self.conn_05.set_attr(T=None)
+                    self.conn_02.set_attr(T=T_ptc_design, m=m_ptc_design)
             else:
                 if not is_series_direct:
                     # Non-SD configs: PTC output adjusts mass flow, Q=PR_Q pins process
+                    if not use_inhouse:
+                        self.ptc_field.set_attr(
+                            E=current_irr, A=self.component_params['ptc_A'],
+                            eta_opt=self.component_params['eta_opt'],
+                            aoi=self.component_params.get('ptc_aoi', 0),
+                            doc=self.component_params.get('ptc_doc', 1),
+                            Tamb=self.component_params.get('ptc_tamb', 20),
+                            c_1=self.component_params.get('ptc_c_1', 0),
+                            c_2=self.component_params.get('ptc_c_2', 0),
+                            iam_1=self.component_params.get('ptc_iam_1', 0),
+                            iam_2=self.component_params.get('ptc_iam_2', 0))
+                    if getattr(self, 'topology', 'Parallel') == 'Series':
+                        self.process_hx.set_attr(Q=None)
+                        if hasattr(self, 'ptc_field_A_designed') and not use_inhouse:
+                            self.ptc_field.set_attr(A=self.ptc_field_A_designed)
+        
+        elif TESmode == '2':
+            # All flow from PTC to process
+            self.create_network(mode=2, design_mode=mode)
+            self.preheater_hx.set_attr(Q=0)
+            if use_inhouse:
+                pass
+            else:
+                if mode == 'design':
                     self.ptc_field.set_attr(
-                        E=current_irr, A=self.component_params['ptc_A'],
+                        aoi=self.component_params['ptc_aoi'], doc=self.component_params['ptc_doc'],
+                        Tamb=self.component_params['ptc_tamb'], A='var',
+                        eta_opt=self.component_params['eta_opt'], c_1=self.component_params['ptc_c_1'],
+                        c_2=self.component_params['ptc_c_2'], E=self.component_params['ptc_E'],
+                        iam_1=self.component_params['ptc_iam_1'], iam_2=self.component_params['ptc_iam_2'])
+                else:
+                    self.ptc_field.set_attr(
+                        E=current_irr, A='var',
                         eta_opt=self.component_params['eta_opt'],
                         aoi=self.component_params.get('ptc_aoi', 0),
                         doc=self.component_params.get('ptc_doc', 1),
@@ -545,39 +601,12 @@ class SolarThermalSystem:
                         c_2=self.component_params.get('ptc_c_2', 0),
                         iam_1=self.component_params.get('ptc_iam_1', 0),
                         iam_2=self.component_params.get('ptc_iam_2', 0))
-                    if getattr(self, 'topology', 'Parallel') == 'Series':
-                        self.process_hx.set_attr(Q=None)
-                        if hasattr(self, 'ptc_field_A_designed'):
-                            self.ptc_field.set_attr(A=self.ptc_field_A_designed)
-        
-        elif TESmode == '2':
-            # All flow from PTC to process
-            self.create_network(mode=2, design_mode=mode)
-            self.preheater_hx.set_attr(Q=0)
-            if mode == 'design':
-                self.ptc_field.set_attr(
-                    aoi=self.component_params['ptc_aoi'], doc=self.component_params['ptc_doc'],
-                    Tamb=self.component_params['ptc_tamb'], A='var',
-                    eta_opt=self.component_params['eta_opt'], c_1=self.component_params['ptc_c_1'],
-                    c_2=self.component_params['ptc_c_2'], E=self.component_params['ptc_E'],
-                    iam_1=self.component_params['ptc_iam_1'], iam_2=self.component_params['ptc_iam_2'])
-            else:
-                self.ptc_field.set_attr(
-                    E=current_irr, A='var',
-                    eta_opt=self.component_params['eta_opt'],
-                    aoi=self.component_params.get('ptc_aoi', 0),
-                    doc=self.component_params.get('ptc_doc', 1),
-                    Tamb=self.component_params.get('ptc_tamb', 20),
-                    c_1=self.component_params.get('ptc_c_1', 0),
-                    c_2=self.component_params.get('ptc_c_2', 0),
-                    iam_1=self.component_params.get('ptc_iam_1', 0),
-                    iam_2=self.component_params.get('ptc_iam_2', 0))
-                A_guess = abs(self.component_params.get('PR_Q', 450000)) / (max(current_irr, 100) * self.component_params.get('eta_opt', 0.75))
-                try: self.ptc_field.A.val = A_guess
-                except: pass
-                # Set initial guess for A to avoid solver stall
-                A_guess = 1e6 / (max(current_irr, 100) * self.component_params['eta_opt'])
-                self.ptc_field.A.val = A_guess
+                    A_guess = abs(self.component_params.get('PR_Q', 450000)) / (max(current_irr, 100) * self.component_params.get('eta_opt', 0.75))
+                    try: self.ptc_field.A.val = A_guess
+                    except: pass
+                    # Set initial guess for A to avoid solver stall
+                    A_guess = 1e6 / (max(current_irr, 100) * self.component_params['eta_opt'])
+                    self.ptc_field.A.val = A_guess
         elif TESmode == '3':
             from tespy.connections import Ref
             self.create_network(mode=3, design_mode=mode)
@@ -675,19 +704,24 @@ class SolarThermalSystem:
             if mode == 'design':
                 self.preheater_hx.set_attr(Q=0)
                 self.conn_02.set_attr(T=560)
-                self.ptc_field.set_attr(A='var')
+                if not use_inhouse:
+                    self.ptc_field.set_attr(A='var')
+                else:
+                    self.conn_06.set_attr(T=None)
+                    self.conn_02.set_attr(T=T_ptc_design, m=m_ptc_design)
             
             if mode == 'offdesign':
-                self.ptc_field.set_attr(
-                    E=current_irr, A=self.component_params['ptc_A'],
-                    eta_opt=self.component_params['eta_opt'],
-                    aoi=self.component_params.get('ptc_aoi', 0),
-                    doc=self.component_params.get('ptc_doc', 1),
-                    Tamb=self.component_params.get('ptc_tamb', 20),
-                    c_1=self.component_params.get('ptc_c_1', 0),
-                    c_2=self.component_params.get('ptc_c_2', 0),
-                    iam_1=self.component_params.get('ptc_iam_1', 0),
-                    iam_2=self.component_params.get('ptc_iam_2', 0))
+                if not use_inhouse:
+                    self.ptc_field.set_attr(
+                        E=current_irr, A=self.component_params['ptc_A'],
+                        eta_opt=self.component_params['eta_opt'],
+                        aoi=self.component_params.get('ptc_aoi', 0),
+                        doc=self.component_params.get('ptc_doc', 1),
+                        Tamb=self.component_params.get('ptc_tamb', 20),
+                        c_1=self.component_params.get('ptc_c_1', 0),
+                        c_2=self.component_params.get('ptc_c_2', 0),
+                        iam_1=self.component_params.get('ptc_iam_1', 0),
+                        iam_2=self.component_params.get('ptc_iam_2', 0))
                 self.preheater_hx.set_attr(Q='var')
                 self.conn_05.set_attr(T=self.conexion_params['5_T'])
 
@@ -716,36 +750,40 @@ class SolarThermalSystem:
                                         m_val = float(df.loc['13_CHSC_CHX', 'm'])
                                         self.tes_charge_m = m_val
                                 except Exception:
-                                    pass
+                                        pass
                             if m_val is None:
                                 m_val = 3.0
                         self.conn_13.set_attr(m=m_val)
                         self.conn_14.set_attr(T=None)
                 self.conn_02.set_attr(T=560)  # Constrain PTC outlet for high-T charge
                 if mode == 'design':
-                    self.ptc_field.set_attr(
-                        A=self.component_params['ptc_A'], E=self.component_params['ptc_E'],
-                        eta_opt=self.component_params['eta_opt'],
-                        aoi=self.component_params.get('ptc_aoi', 0),
-                        doc=self.component_params.get('ptc_doc', 1),
-                        Tamb=self.component_params.get('ptc_tamb', 20),
-                        c_1=self.component_params.get('ptc_c_1', 0),
-                        c_2=self.component_params.get('ptc_c_2', 0),
-                        iam_1=self.component_params.get('ptc_iam_1', 0),
-                        iam_2=self.component_params.get('ptc_iam_2', 0)
-                    )
+                    if not use_inhouse:
+                        self.ptc_field.set_attr(
+                            A=self.component_params['ptc_A'], E=self.component_params['ptc_E'],
+                            eta_opt=self.component_params['eta_opt'],
+                            aoi=self.component_params.get('ptc_aoi', 0),
+                            doc=self.component_params.get('ptc_doc', 1),
+                            Tamb=self.component_params.get('ptc_tamb', 20),
+                            c_1=self.component_params.get('ptc_c_1', 0),
+                            c_2=self.component_params.get('ptc_c_2', 0),
+                            iam_1=self.component_params.get('ptc_iam_1', 0),
+                            iam_2=self.component_params.get('ptc_iam_2', 0)
+                        )
+                    else:
+                        self.conn_02.set_attr(T=T_ptc_design, m=m_ptc_design)
                 else:
-                    self.ptc_field.set_attr(
-                        E=current_irr, A=self.component_params['ptc_A'],
-                        eta_opt=self.component_params['eta_opt'],
-                        aoi=self.component_params.get('ptc_aoi', 0),
-                        doc=self.component_params.get('ptc_doc', 1),
-                        Tamb=self.component_params.get('ptc_tamb', 20),
-                        c_1=self.component_params.get('ptc_c_1', 0),
-                        c_2=self.component_params.get('ptc_c_2', 0),
-                        iam_1=self.component_params.get('ptc_iam_1', 0),
-                        iam_2=self.component_params.get('ptc_iam_2', 0)
-                    )
+                    if not use_inhouse:
+                        self.ptc_field.set_attr(
+                            E=current_irr, A=self.component_params['ptc_A'],
+                            eta_opt=self.component_params['eta_opt'],
+                            aoi=self.component_params.get('ptc_aoi', 0),
+                            doc=self.component_params.get('ptc_doc', 1),
+                            Tamb=self.component_params.get('ptc_tamb', 20),
+                            c_1=self.component_params.get('ptc_c_1', 0),
+                            c_2=self.component_params.get('ptc_c_2', 0),
+                            iam_1=self.component_params.get('ptc_iam_1', 0),
+                            iam_2=self.component_params.get('ptc_iam_2', 0)
+                        )
                 self.process_hx.set_attr(Q=self.component_params['PR_Q'])
                 self.conn_05.set_attr(T=self.conexion_params['5_T'])
                 self.conn_06.set_attr(T=self.conexion_params['6_T'])
@@ -755,11 +793,15 @@ class SolarThermalSystem:
                 if hasattr(self, 'charge_hx_kA') and self.charge_hx_kA:
                     self.charge_tes_hx.set_attr(kA=self.charge_hx_kA)
                 if mode == 'design':
-                    self.ptc_field.set_attr(A='var')
+                    if not use_inhouse:
+                        self.ptc_field.set_attr(A='var')
+                    else:
+                        self.conn_02.set_attr(T=T_ptc_design, m=m_ptc_design)
                 else:
-                    self.ptc_field.set_attr(E=current_irr)
+                    if not use_inhouse:
+                        self.ptc_field.set_attr(E=current_irr)
                     self.process_hx.set_attr(Q=None)
-                    if hasattr(self, 'ptc_field_A_designed'):
+                    if hasattr(self, 'ptc_field_A_designed') and not use_inhouse:
                         self.ptc_field.set_attr(A=self.ptc_field_A_designed)
 
         else:   
@@ -1001,6 +1043,7 @@ class SolarThermalSystem:
             self.network.save(name)
             # Persist designed values for cross-mode use
             if (hasattr(self, 'ptc_field') and self.ptc_field is not None
+                    and not self.component_params.get('use_inhouse_ptc', False)
                     and self.ptc_field.A.val is not None):
                 self.ptc_field_A_designed = self.ptc_field.A.val
             if (TESmode == '1' and hasattr(self, 'charge_tes_hx')

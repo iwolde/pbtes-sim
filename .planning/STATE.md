@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Production Runs & Exergoeconomics
-status: Phase C Refinement — Conducted a comprehensive physical and thermodynamic assessment of all components, identifying a 20x heat loss bug, fluid properties mismatch, and Peclet clipping behaviors. Corrected the PBTES heat loss calculations in packed_bed.py, validated via pytest.
-last_updated: "2026-06-04T11:25:00-04:00"
+status: Phase C Refinement — Integrated custom in-house PTC model with full backward compatibility, resolved Windows file lock conflicts during cache-clearing initialization, and successfully verified convergence of Parallel/Indirect and Series/Direct layouts, with all tests passing.
+last_updated: "2026-06-04T16:40:00-04:00"
 progress:
   total_phases: 4
   completed_phases: 3
-  percent: 98
-branch: feature/robust-parametric-sweeps
+  percent: 99
+branch: feature/inhouse-ptc-field
 ---
 
 # Project State

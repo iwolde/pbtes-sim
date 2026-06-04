@@ -1,6 +1,6 @@
 # TODO — PBTES Simulation Project
 
-*Last updated: 2026-06-03*
+*Last updated: 2026-06-04*
 
 ---
 
@@ -8,6 +8,7 @@
 
 ### Convergence Fixes
 
+- [x] **INHOUSE_PTC_FIELD**: Integrate in-house PTC model (`ptc_model.py`) with backward compatibility (`use_inhouse_ptc` in `config.py`), covering Parallel/Indirect and Series/Direct configurations with full tests passing.
 - [x] **MODE1_OFFDESIGN**: Fix Mode 1 offdesign divergence for Solar Salt
   - Symptom: TESPy mass flow hits sentinel `-1e12 kg/s`
   - Location: `pbtes/simulation/solver.py` → `attempt_to_solve()`, `pbtes/network/system.py`

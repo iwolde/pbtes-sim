@@ -93,6 +93,21 @@ class PTCConfig:
     # ── Global convergence retries ─────────────────────────────────────
     gc_retries: int = 5               # attempts before raising
 
+    # ── In-house PTC model options and physical geometry ───────────────
+    use_inhouse_ptc: bool = False     # Set to True to enable the new in-house solver
+    latitude: float = -33.4375        # degrees (Santiago, Chile)
+    longitude: float = -70.65         # degrees
+    mer_estandar: float = -60.0       # UTC-4 Standard Meridian (degrees)
+    w_aperture: float = 6.77          # Ancho de apertura (aperture width), m
+    l_module: float = 4.0             # Longitud del módulo (module length), m
+    d_out: float = 0.07               # Diámetro externo tubería (outer diameter), m
+    d_in: float = 0.065               # Diámetro interno tubería (inner diameter), m
+    rho_mirror: float = 0.90          # Reflectividad de espejos
+    tau_pyrex: float = 0.945          # Transmitancia de la cubierta de vidrio
+    alpha_absorber: float = 0.94      # Absortividad del tubo
+    gamma_intercept: float = 0.92     # Factor de intercepción del receptor
+    fe_soil: float = 0.92             # Factor de ensuciamiento
+
     # ── Design-point ranges ────────────────────────────────────────────
     range_aperture: Tuple[float, float] = (500.0, 10000.0)  # m²
     range_eta_opt: Tuple[float, float] = (0.65, 0.85)
@@ -475,6 +490,20 @@ def baseline_config():
         'PR_pr': c.process.pr_process_hx,
         'PR_Q': c.process.heat_demand,
         'PH_pr': c.process.pr_preheater,
+        # in-house PTC parameters
+        'use_inhouse_ptc': c.ptc.use_inhouse_ptc,
+        'latitude': c.ptc.latitude,
+        'longitude': c.ptc.longitude,
+        'mer_estandar': c.ptc.mer_estandar,
+        'w_aperture': c.ptc.w_aperture,
+        'l_module': c.ptc.l_module,
+        'd_out': c.ptc.d_out,
+        'd_in': c.ptc.d_in,
+        'rho_mirror': c.ptc.rho_mirror,
+        'tau_pyrex': c.ptc.tau_pyrex,
+        'alpha_absorber': c.ptc.alpha_absorber,
+        'gamma_intercept': c.ptc.gamma_intercept,
+        'fe_soil': c.ptc.fe_soil,
     }
 
     conexion_params = {

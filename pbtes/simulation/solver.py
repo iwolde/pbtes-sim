@@ -63,6 +63,13 @@ class Solver:
         self.zinc_pool = ZincPool(zinc_pool_params) if zinc_pool_params is not None else None
         # ---
 
+        # --- In-house PTC model ---
+        self.use_inhouse_ptc = self.component_params.get('use_inhouse_ptc', False)
+        if self.use_inhouse_ptc:
+            from pbtes.components.ptc_model import PTCFieldModel
+            self.ptc_model = PTCFieldModel(self.component_params)
+            self.ptc_model.design_solar_field(self.component_params['ptc_A'], self.HTF)
+
         # --- Winter Logic & Tank Heaters ───
         T_set_prod = self.tes_params.get('T_set_tank_production', 450.0)
         T_set_wint = self.tes_params.get('T_set_tank_winter', 300.1)
@@ -271,19 +278,50 @@ class Solver:
         self.solar_system.network.print_results()
         
     def initialize_modes(self):
-        import os, shutil, glob
+        import os, shutil, glob, gc, stat
+        # Force garbage collection to release any file locks from previous network solves
+        gc.collect()
+        
+        def _force_remove(func, path, exc_info):
+            try:
+                os.chmod(path, stat.S_IWRITE)
+                func(path)
+            except Exception:
+                pass
+
         base_dir = '.tespy_cache'
         if os.path.exists(base_dir):
             for f in glob.glob(os.path.join(base_dir, 'base_design_*')):
                 if os.path.isfile(f):
-                    os.remove(f)
+                    try:
+                        os.chmod(f, stat.S_IWRITE)
+                        os.remove(f)
+                    except Exception:
+                        pass
                 else:
-                    shutil.rmtree(f, ignore_errors=True)
+                    shutil.rmtree(f, onerror=_force_remove)
+                    # Fallback: if it still exists due to locking, rename it out of the way
+                    if os.path.exists(f):
+                        try:
+                            import uuid
+                            os.rename(f, f + "_corrupted_" + uuid.uuid4().hex[:6])
+                        except Exception:
+                            pass
         for f in glob.glob('base_design_*'):
             if os.path.isfile(f):
-                os.remove(f)
+                try:
+                    os.chmod(f, stat.S_IWRITE)
+                    os.remove(f)
+                except Exception:
+                    pass
             else:
-                shutil.rmtree(f, ignore_errors=True)
+                shutil.rmtree(f, onerror=_force_remove)
+                if os.path.exists(f):
+                    try:
+                        import uuid
+                        os.rename(f, f + "_corrupted_" + uuid.uuid4().hex[:6])
+                    except Exception:
+                        pass
 
         def _make_system(T_init):
             self.tes_params['Initial temperature'] = T_init
@@ -316,17 +354,26 @@ class Solver:
             
         if is_pi:
             # Expected design-point temperatures and flows for Parallel/Indirect design convergence
-            T_hot_in = 520.0
-            T_cold_in = 450.0
-            T10_guess = 470.0
-            T14_guess = 490.0
-            
-            m_process_guess = abs(q_proc_design) / (960.0 * 40.0)
-            m_charge_guess = (Q_ptc_design - abs(q_proc_design)) / (960.0 * 50.0)
-            m_charge_guess = max(0.5, m_charge_guess)
-            m_ptc_guess = m_process_guess + m_charge_guess
-            m_secondary_guess = (Q_ptc_design - abs(q_proc_design)) / (960.0 * 40.0)
-            m_secondary_guess = max(0.5, m_secondary_guess)
+            if self.use_inhouse_ptc:
+                m_ptc_guess = self.ptc_model.m_dot_PTC_real * self.ptc_model.N_loops_real
+                T_hot_in = 560.0
+                T_cold_in = 450.0
+                T10_guess = 470.0
+                T14_guess = 490.0
+                m_process_guess = abs(q_proc_design) / (960.0 * 40.0)
+                m_charge_guess = m_ptc_guess - m_process_guess
+                m_secondary_guess = m_charge_guess
+            else:
+                T_hot_in = 520.0
+                T_cold_in = 450.0
+                T10_guess = 470.0
+                T14_guess = 490.0
+                m_process_guess = abs(q_proc_design) / (960.0 * 40.0)
+                m_charge_guess = (Q_ptc_design - abs(q_proc_design)) / (960.0 * 50.0)
+                m_charge_guess = max(0.5, m_charge_guess)
+                m_ptc_guess = m_process_guess + m_charge_guess
+                m_secondary_guess = (Q_ptc_design - abs(q_proc_design)) / (960.0 * 40.0)
+                m_secondary_guess = max(0.5, m_secondary_guess)
             
             def _T_to_h(T):
                 return 594.37 + 1.5233 * (T - 420.0)
@@ -580,6 +627,8 @@ class Solver:
                             system.conn_04.set_attr(T=system.tes.profile[-1])
                         else:
                             system.conn_15.set_attr(T=system.tes.profile[-1])
+                    if self.use_inhouse_ptc and TESmode in ['1', '5', '6'] and getattr(system, 'inhouse_ptc_T', None) is not None:
+                        system.conn_02.set_attr(T=system.inhouse_ptc_T, m=system.inhouse_ptc_m)
                 except Exception as e:
                     print(f"Warning: could not recreate network in attempt_to_solve: {e}")
                 
@@ -631,7 +680,7 @@ class Solver:
                 try:
                     system.set_operation_mode(TESmode='2', mode=mode, current_irr=self.current_irr,
                                               profile=system.tes.profile if hasattr(system, 'tes') else None)
-                    system.solve_network(mode=mode, design_path='base_design_2', TESmode='2')
+                    system.solve_network(mode=mode, design_path='base_design_2', TESmode='2', use_init_path=True)
                     if bool(getattr(system.network, 'converged', False)):
                         self.current_mode = '2'
                         attempts.append({'mode': '2', 'try_idx': 'fallback', 'tespy_converged': True})
@@ -644,7 +693,7 @@ class Solver:
             self.current_mode = '4'
             try:
                 system.set_operation_mode(TESmode='4', mode=mode, current_irr=self.current_irr, profile=system.tes.profile if hasattr(system, 'tes') else None)
-                system.solve_network(mode=mode, design_path='base_design_4', TESmode='4')
+                system.solve_network(mode=mode, design_path='base_design_4', TESmode='4', use_init_path=True)
                 if bool(getattr(system.network, 'converged', False)):
                     attempts.append({'mode': '4', 'try_idx': 'fallback', 'tespy_converged': True})
                     return True, attempts, last_err
@@ -806,6 +855,27 @@ class Solver:
         else:
             old_profile = np.array(system.tes.profile).copy()
         for iteration in range(max_iter):
+            if self.use_inhouse_ptc and TESmode in ['1', '2', '5', '6']:
+                if TESmode == '2':
+                    system.conn_02.set_attr(T=None, m=None)
+                else:
+                    T_in_C = system.conn_01.T.val if (hasattr(system, 'conn_01') and system.conn_01.T.val is not None and not np.isnan(system.conn_01.T.val)) else 450.0
+                    P_in_bar = system.conn_01.p.val if (hasattr(system, 'conn_01') and system.conn_01.p.val is not None and not np.isnan(system.conn_01.p.val)) else 50.0
+                    t_stamp = getattr(self, 'current_timestamp', None) or pd.Timestamp('2022-12-21 12:00:00')
+                    if TESmode == '1' and getattr(self, 'topology', 'Parallel') == 'Parallel':
+                        self.ptc_model.params['ptc_T_out_target'] = 520.0
+                    else:
+                        self.ptc_model.params['ptc_T_out_target'] = 560.0
+                        
+                    T_out_C, m_ptc_kg_s = self.ptc_model.solve_quasi_steady(
+                        T_in_C=T_in_C, P_in_bar=P_in_bar, Tamb_C=Tamb,
+                        DNI_W_m2=self.current_irr, timestamp=t_stamp,
+                        htf_fluid=self.HTF
+                    )
+                    system.inhouse_ptc_T = T_out_C
+                    system.inhouse_ptc_m = m_ptc_kg_s
+                    system.conn_02.set_attr(T=T_out_C, m=m_ptc_kg_s)
+            
             if mode == 'offdesign':
                 system.network.set_attr(iterinfo=False)
                 # Propagate design-point TES mass flow so set_operation_mode can constrain it

@@ -1,4 +1,4 @@
-﻿# Technology Stack
+# Technology Stack
 
 ## Languages & Runtime
 
@@ -64,7 +64,7 @@ codigos/
 ## Heat Transfer Fluids (via CoolProp)
 
 ### Primary HTF (Solar Field)
-- INCOMP::NaK - Sodium-Potassium eutectic (high temperature)
+- INCOMP::NaK - Solar Salt (commercial molten nitrate salt, represented via INCOMP::NaK)
 - Water - Water (backup)
 - CO2 - Carbon dioxide (backup)
 

@@ -9,11 +9,11 @@ This document gathers all technical findings, options attempted, failure modes, 
 In the **Parallel / Indirect (PI)** layout, Mode 1 represents the operational state where solar irradiance is high enough to simultaneously serve the galvanizing process and charge the thermal energy storage (TES) tank.
 
 ### 1.1 Physical Layout
-- **Primary Loop**: Heat Transfer Fluid (NaK) is pumped through the Parabolic Trough Collector (PTC) field, where it is heated. The flow then splits:
+- **Primary Loop**: Heat Transfer Fluid (Solar Salt) is pumped through the Parabolic Trough Collector (PTC) field, where it is heated. The flow then splits:
   - Part goes to the process branch: through the **Preheater HX** (auxiliary heater, which is off in Mode 1) and the **Process HX** (extracts $Q_{\text{proc}} = -450\text{ kW}$).
   - Part goes to the storage branch: through the hot side of the **Charge TES HX** (transfers heat to the storage loop).
   - The two streams merge and return to the PTC field.
-- **Secondary Loop**: Driven by a separate pump, NaK is drawn from the bottom of the TES tank (cold side, $T_{13} = T_{\text{tes, bot}}$), heated in the **Charge TES HX** (cold side), and reinjected at the top of the TES tank ($T_{14} = T_{\text{charge, in}}$).
+- **Secondary Loop**: Driven by a separate pump, Solar Salt is drawn from the bottom of the TES tank (cold side, $T_{13} = T_{\text{tes, bot}}$), heated in the **Charge TES HX** (cold side), and reinjected at the top of the TES tank ($T_{14} = T_{\text{charge, in}}$).
 
 ### 1.2 Mathematical Formulation (Degrees of Freedom)
 In TESPy, the system must have exactly zero degrees of freedom (DOFs) to solve.

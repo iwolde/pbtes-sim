@@ -254,6 +254,23 @@ class ThermalEnergyStorage:
         new_T_profile = np.zeros_like(profile)
         total_aux_energy_J = 0.0
 
+        # Outer dimensions of the tank
+        D_outer = self.Dint + 2 * self.wst + 2 * self.wins
+        A_outer_cross = 0.25 * D_outer**2 * np.pi
+        h_conv = 4.0  # W/m2 K
+
+        # Cylindrical wall and insulation resistances for a single layer (using layer height dz)
+        R_wall_cyl = np.log((self.Dint + 2 * self.wst) / self.Dint) / (2 * np.pi * dz * self.kst)
+        R_ins_cyl = np.log((self.Dint + 2 * self.wst + 2 * self.wins) / (self.Dint + 2 * self.wst)) / (2 * np.pi * dz * self.kins)
+        R_conv_cyl = 1.0 / (h_conv * np.pi * D_outer * dz)
+        R_side = R_wall_cyl + R_ins_cyl + R_conv_cyl
+
+        # Flat plate conduction/convection resistances for top/bottom ends
+        R_wall_flat = self.wst / (A_cross * self.kst)
+        R_ins_flat = self.wins / (A_cross * self.kins)
+        R_conv_flat = 1.0 / (h_conv * A_outer_cross)
+        R_flat = R_wall_flat + R_ins_flat + R_conv_flat
+
         for i, T in enumerate(profile):
             T = max(T, 300.1)
             T_K = T + 273.15
@@ -263,22 +280,16 @@ class ThermalEnergyStorage:
             effective_capacity = volume_layer * (self.e * fluid_density * fluid_cp +
                                                   (1 - self.e) * self.rho_s * self.cp_s)
 
-            if i == 0:
-                area = A_cross + (np.pi * self.Dint * dz)
-            elif i == n_layers - 1:
-                area = np.pi * self.Dint * dz
+            # Side heat loss is active for all layers along the tank height
+            Q_loss_side = (T - T_amb) / R_side
+            
+            # Flat plate loss is active only for top (i=0) and bottom (i=n_layers-1) ends
+            if i == 0 or i == n_layers - 1:
+                Q_loss_flat = (T - T_amb) / R_flat
             else:
-                area = np.pi * self.Dint * dz
+                Q_loss_flat = 0.0
 
-            R_wall = np.log((self.Dint+self.wst)/(self.Dint)) / (np.pi*self.HT*self.kst)
-            R_ins  = np.log((self.Dint+self.wst+self.wins)/(self.Dint+self.wst)) / (np.pi*self.HT*self.kins)
-            h_conv = 4  # W/m2 K
-            R_conv = 1/(h_conv * area)
-
-            R_total = R_wall + R_ins + R_conv
-
-            Q_loss = (T - T_amb) / R_total
-
+            Q_loss = Q_loss_side + Q_loss_flat
             dT = (Q_loss * dt) / effective_capacity
             T_new_unheated = T - dT
 
@@ -287,7 +298,12 @@ class ThermalEnergyStorage:
                 # Heat delivered to the tank layer (Watts)
                 Q_to_tank_W = effective_capacity * (T_set - T_new_unheated) / dt
                 # Heat lost from the heating blanket to the environment (Watts)
-                Q_to_env_W = (T_set - T_amb) / (R_ins + R_conv)
+                Q_to_env_side_W = (T_set - T_amb) / (R_ins_cyl + R_conv_cyl)
+                if i == 0 or i == n_layers - 1:
+                    Q_to_env_flat_W = (T_set - T_amb) / (R_ins_flat + R_conv_flat)
+                else:
+                    Q_to_env_flat_W = 0.0
+                Q_to_env_W = Q_to_env_side_W + Q_to_env_flat_W
                 # Total heater energy for this layer (Joules)
                 total_aux_energy_J += (Q_to_tank_W + Q_to_env_W) * dt
             else:

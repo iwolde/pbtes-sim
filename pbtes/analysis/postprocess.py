@@ -42,7 +42,7 @@ def calculate_ergun_pressure_drop(mdot: float, T_fluid_C: float, tank_diameter: 
         rho = cp.PropsSI('D', 'T', T_K, 'P', P_Pa, htf_fluid)  # Density [kg/m^3]
         mu = cp.PropsSI('V', 'T', T_K, 'P', P_Pa, htf_fluid)   # Dynamic viscosity [Pa*s]
     except Exception as e:
-        # Fallback to rough molten salt / NaK properties if CoolProp fails
+        # Fallback to rough Solar Salt properties if CoolProp fails
         rho = 1850.0  
         mu = 0.001
         

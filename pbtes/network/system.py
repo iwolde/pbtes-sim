@@ -224,13 +224,13 @@ class SolarThermalSystem:
                 self.conn_14 = tpcn.Connection(self.high_t_charge_hx, 'out2', self.tes_ch_sink, 'in1', label='14_CHX_CHSK')
                 self.network.add_conns(self.conn_01, self.conn_02, self.conn_10, self.conn_05, self.conn_06, self.conn_13, self.conn_14)
                 # IMPORTANT: h0 must be set for ALL connections so TESPy's initialise_source()
-                # is never called — that fallback uses 200°C/250°C which crashes NaK (min 300°C).
+                # is never called — that fallback uses 200°C/250°C which crashes the fluid (min 300°C).
                 #
                 # Mode 5 design point: preheater Q=0, TES cold inlet at 480°C (process return
                 # level, realistic TES bottom for a warm-but-not-full TES), ttd_l=20K.
                 # → T10=T05=500°C, T_PTC_out≈560°C (high irradiance), T14≈510°C (TES charge temp)
-                # NaK h at 50 bar: 480°C≈686, 500°C≈716, 560°C≈808 kJ/kg
-                # NaK h at  5 bar: 480°C≈686, 510°C≈732 kJ/kg
+                # Fluid h at 50 bar: 480°C≈686, 500°C≈716, 560°C≈808 kJ/kg
+                # Fluid h at  5 bar: 480°C≈686, 510°C≈732 kJ/kg
                 for c, T0, h0, m0, p0 in [
                     (self.conn_01, 480, 686, 13.0, 50),  # CC→PTC inlet  = process return
                     (self.conn_02, 560, 808, 13.0, 50),  # PTC outlet    = high-irr output
@@ -284,8 +284,8 @@ class SolarThermalSystem:
                 else:
                     conns = [self.conn_01, self.conn_02, self.conn_10, self.conn_04, self.conn_05, self.conn_06]
                 self.network.add_conns(*conns)
-                # NaK h at 50 bar: 480°C≈686, 500°C≈716, 520°C≈747 kJ/kg
-                # NaK h at  5 bar: 400°C≈562, 440°C≈623 kJ/kg
+                # Fluid h at 50 bar: 480°C≈686, 500°C≈716, 520°C≈747 kJ/kg
+                # Fluid h at  5 bar: 400°C≈562, 440°C≈623 kJ/kg
                 for c, h0, m0, p0 in [
                     (self.conn_01, 716, 12.0, 50),
                     (self.conn_02, 747, 12.0, 50),

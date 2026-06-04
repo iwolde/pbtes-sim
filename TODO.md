@@ -8,10 +8,10 @@
 
 ### Convergence Fixes
 
-- [x] **MODE1_OFFDESIGN**: Fix Mode 1 offdesign divergence for NaK
+- [x] **MODE1_OFFDESIGN**: Fix Mode 1 offdesign divergence for Solar Salt
   - Symptom: TESPy mass flow hits sentinel `-1e12 kg/s`
   - Location: `pbtes/simulation/solver.py` → `attempt_to_solve()`, `pbtes/network/system.py`
-  - Root cause: NaK fluid properties pushed out of valid range during offdesign iteration
+  - Root cause: Solar Salt fluid properties pushed out of valid range during offdesign iteration
   - Approach: Better initial guesses, tighter bounds, staged initialization, temperature clamping
 
 - [x] **MODE6_DESIGN**: Fix Mode 6 design failure
@@ -29,6 +29,8 @@
 - [x] **CONV_RATE_95**: Achieve >= 95% timestep convergence rate for full-year simulation (100% transient convergence verified across all 4 layouts!)
 - [x] **EBAL_CHECK**: Verify monthly energy balance error < 1%
 - [x] **WINTER_CONTROL_LOGIC**: Implement seasonal winter control logic, insulated heating blankets, and PI Mode 6 Regimes A/B (Completed 90-day simulation and verified exergy & thermal solar fractions for both Parallel/Indirect and Series/Direct layouts)
+- [x] **HEAT_LOSS_BUG_CORRECTION**: Corrected spatial discretization (dz vs HT) and convective area boundaries in PBTES heat loss calculations (reduced standby losses to realistic 1/20th levels)
+
 
 ### Code Infrastructure
 
@@ -44,7 +46,7 @@
 ### HTF Comparison
 
 - [ ] **AIR_BASELINE**: Run full-year simulation with Air as HTF (Parallel/Indirect)
-- [ ] **AIR_COMPARISON**: Compare NaK vs Air results — solar fraction, temperatures, convergence
+- [ ] **AIR_COMPARISON**: Compare Solar Salt vs Air results — solar fraction, temperatures, convergence
 
 ---
 
@@ -52,7 +54,7 @@
 
 ### Full-Year Simulations
 
-- [ ] **RUN_PARALLEL_INDIRECT**: Baseline 365-day run (Parallel/Indirect, NaK, A=1000 m²)
+- [ ] **RUN_PARALLEL_INDIRECT**: Baseline 365-day run (Parallel/Indirect, Solar Salt, A=1000 m²)
 - [ ] **RUN_SERIES_INDIRECT**: Series/Indirect 365-day run
 - [ ] **RUN_PARALLEL_DIRECT**: Parallel/Direct 365-day run
 - [ ] **RUN_SERIES_DIRECT**: Series/Direct 365-day run
@@ -81,7 +83,7 @@
 - [ ] **FIG_ZINC_POOL**: Zinc pool temperature year-long profile
 - [ ] **FIG_PARALLEL_VS_SERIES**: SF comparison across topologies
 - [ ] **FIG_DIRECT_VS_INDIRECT**: Tank config comparison
-- [ ] **FIG_NAK_VS_AIR**: HTF comparison
+- [ ] **FIG_NAK_VS_AIR**: HTF comparison (Solar Salt vs Air)
 - [ ] **FIG_SF_VS_SM**: Solar fraction vs solar multiple
 - [ ] **FIG_LCOH_VS_VOLUME**: LCOH vs TES volume
 - [ ] **FIG_TORNADO**: Sensitivity tornado chart
@@ -90,11 +92,11 @@
 ### Paper Draft
 
 - [ ] **DRAFT_INTRO**: Section 1 — Introduction (decarbonization, PBTES, gap)
-- [ ] **DRAFT_SYSTEM**: Section 2 — System description
-- [ ] **DRAFT_MODELS**: Section 3 — Mathematical models
+- [x] **DRAFT_SYSTEM**: Section 2 — System description (Drafted in article_methodology.txt)
+- [x] **DRAFT_MODELS**: Section 3 — Mathematical models (Drafted in article_methodology.txt)
 - [ ] **DRAFT_CASE**: Section 4 — Case study
 - [ ] **DRAFT_RESULTS**: Section 5 — Results
-- [ ] **DRAFT_ECON**: Section 6 — Economic analysis
+- [x] **DRAFT_ECON**: Section 6 — Economic analysis (Drafted in article_methodology.txt)
 - [ ] **DRAFT_DISCUSSION**: Section 7 — Discussion
 - [ ] **DRAFT_CONCLUSIONS**: Section 8 — Conclusions
 

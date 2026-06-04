@@ -3,7 +3,7 @@
 ## Phase C: Physics & Convergence
 
 ### Convergence Targets
-- [ ] **CONV-01**: Mode 1 offdesign converges for NaK HTF (fix NaK property range issue).
+- [ ] **CONV-01**: Mode 1 offdesign converges for Solar Salt HTF (fix Solar Salt property range issue).
 - [ ] **CONV-02**: Mode 6 design passes (fix "too many parameters" error).
 - [ ] **CONV-03**: All 6 modes converge for Parallel/Indirect topology.
 - [ ] **CONV-04**: All 6 modes converge for Series/Indirect topology.
@@ -18,7 +18,7 @@
 
 ### Results Output
 - [ ] **RES-01**: Topology comparison (Parallel vs Series, Direct vs Indirect) — 4 full-year runs.
-- [ ] **RES-02**: HTF comparison (NaK vs Air) — 2 full-year runs.
+- [ ] **RES-02**: HTF comparison (Solar Salt vs Air) — 2 full-year runs.
 
 ## Phase D: Publication Output
 
@@ -37,7 +37,7 @@
 - [ ] **FIG-07**: Zinc pool temperature year-long profile.
 - [ ] **FIG-08**: Parallel vs Series solar fraction comparison.
 - [ ] **FIG-09**: Direct vs Indirect comparison.
-- [ ] **FIG-10**: NaK vs Air HTF comparison.
+- [ ] **FIG-10**: Solar Salt vs Air HTF comparison.
 - [ ] **FIG-11**: Solar fraction vs solar multiple.
 - [ ] **FIG-12**: LCOH vs TES volume.
 - [ ] **FIG-13**: Sensitivity tornado chart.

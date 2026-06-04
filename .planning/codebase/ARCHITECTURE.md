@@ -22,7 +22,7 @@ Key parameters:
 - tes_params: Thermal energy storage geometry and material properties
 - component_params: Solar field and heat exchanger specifications  
 - conexion_params: Operating conditions (temperatures, pressures, fluids)
-- HTF: Heat transfer fluid selection (NaK, CO2, Water)
+- HTF: Heat transfer fluid selection (Solar Salt, CO2, Water)
 
 ### Layer 2: Core Simulation Engine (coreV5_5.py)
 

@@ -67,7 +67,7 @@ All parameters are centralized in `pbtes/config.py`. Use `baseline_config()` for
 
 ## Key Decisions
 
-- **HTF**: NaK (INCOMP::NaK via CoolProp) — primary; Air — comparison
+- **HTF**: Solar Salt (INCOMP::NaK via CoolProp) — primary; Air — comparison
 - **Zinc pool**: Always enabled for production (dynamic galvanizing demand); fixed-demand mode available for testing
 - **Pump power**: Post-processed from quasi-steady results (Ergun equation)
 - **PBTES model**: Validated from prior publication

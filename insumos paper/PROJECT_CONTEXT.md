@@ -1,6 +1,6 @@
 # PBTES Simulation Project — Complete Context
 *Single authoritative reference for humans and AI agents.*
-*Updated: 2026-05-21 | HTF: NaK + Air | Zinc pool: dynamic (always ON)*
+*Updated: 2026-06-04 | HTF: Solar Salt + Air | Zinc pool: dynamic (always ON)*
 
 ---
 
@@ -21,7 +21,7 @@ solar multiple and TES volume, with full economic analysis (LCOH).
 ### Scientific novelty
 - First system-level simulation coupling PBTES with a dynamic galvanizing process model
 - Comparison of Parallel vs Series and Direct vs Indirect configurations
-- NaK as HTF (vs Air comparison)
+- Solar Salt as HTF (vs Air comparison)
 - Pre-validated PBTES model (from a prior publication — no re-validation needed)
 
 ---
@@ -37,7 +37,7 @@ solar multiple and TES volume, with full economic analysis (LCOH).
 - Design DNI: 900 W/m², design ambient: 20°C, design AOI: 20°
 
 ### 2.2 Heat Transfer Fluid (HTF)
-- **Primary**: NaK (`INCOMP::NaK` in CoolProp) — sodium-potassium alloy
+- **Primary**: Solar Salt (represented as `INCOMP::NaK` in CoolProp)
 - **Comparison**: Air — used in parametric sweeps for low-cost reference
 - Operating range: 300–600°C, nominal pressure ~5 bar
 
@@ -65,7 +65,7 @@ solar multiple and TES volume, with full economic analysis (LCOH).
 All four must be simulated for the paper. Baseline is Parallel/indirect.
 
 #### Direct Configuration Key Implementation Details
-1. **Direct-Contact Modeling**: In the direct configuration, primary NaK flows directly through the packed bed rock tanks (Hot Tank and Cold Tank) without any intermediate heat exchangers. These are modeled inside the TESPy network as `SimpleHeatExchanger` (pipe) components.
+1. **Direct-Contact Modeling**: In the direct configuration, primary Solar Salt flows directly through the packed bed rock tanks (Hot Tank and Cold Tank) without any intermediate heat exchangers. These are modeled inside the TESPy network as `SimpleHeatExchanger` (pipe) components.
 2. **Series/Direct Mode 1 Charging**: 
    - The Hot Tank is located upstream of the process (receives the high-temperature PTC outlet at ~560°C). The Cold Tank is located downstream of the process (receives the process return at ~480°C).
    - The coupling variables set on the TESPy connections are the Hot Tank outlet (`conn_ht_ph.T`) and the Cold Tank outlet (`conn_10.T`), which are set to the bottom temperatures calculated iteratively by the 1D Schumann rock bed model.
@@ -414,14 +414,14 @@ git push origin main
 ### Current: Phase C — Physics & Convergence
 
 **Known issues** (see `TODO.md` for full list):
-1. Mode 1 offdesign diverges for NaK
+1. Mode 1 offdesign diverges for Solar Salt
 2. Mode 6 design fails with "too many parameters"
 3. Full-year simulation convergence < 95%
 
 ### Future: Phase D — Results & Publication
 
 - Run all 4 topologies × 365 days
-- Run HTF comparison (NaK vs Air)
+- Run HTF comparison (Solar Salt vs Air)
 - Run parametric sweeps (aperture + TES volume)
 - Generate 14+ figures
 - Compute LCOH and exergoeconomic analysis
@@ -470,7 +470,7 @@ git push origin main
 
 | Decision | Choice | Rationale |
 |----------|--------|-----------|
-| HTF | NaK (`INCOMP::NaK`) primary | Available in CoolProp, appropriate temperature range |
+| HTF | Solar Salt (`INCOMP::NaK`) primary | Represented by INCOMP::NaK in CoolProp, appropriate temperature range |
 | HTF comparison | Air | Low-cost reference for parametric comparison |
 | Zinc pool | Always ON | Core novelty of the paper |
 | Pump power | Post-processed (Ergun) | Not inline — avoids convergence complications |

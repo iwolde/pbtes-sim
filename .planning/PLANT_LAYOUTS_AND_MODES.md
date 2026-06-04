@@ -236,7 +236,7 @@ graph TD
 
 ### 4.4 Series / Direct — Full Layout
 
-All components in a single series loop. The primary NaK flows directly **through** the packed beds (Hot Tank and Cold Tank) without any intermediate heat exchangers. In this direct configuration, the beds are modeled inside TESPy as `SimpleHeatExchanger` components (acting as "pipes").
+All components in a single series loop. The primary Solar Salt flows directly **through** the packed beds (Hot Tank and Cold Tank) without any intermediate heat exchangers. In this direct configuration, the beds are modeled inside TESPy as `SimpleHeatExchanger` components (acting as "pipes").
 
 The **Hot Tank** is placed **upstream** of the process (receiving PTC output at ~560°C), and the **Cold Tank** is placed **downstream** (receiving process return at ~480°C).
 
@@ -620,7 +620,7 @@ graph LR
 The PBTES packed bed is solved by a 1D Schumann model which is **not inside** the TESPy solver. The solver therefore performs a quasi-steady coupling loop at each timestep.
 
 ### 6.1 Indirect Configuration Coupling
-In indirect configurations, the primary NaK loop is decoupled from the TES secondary loop by a physical heat exchanger (HX). TESPy solves the primary loop using a guessed secondary inlet temperature, and the Schumann model updates the rock bed using the resulting HX hot-side temperature. The system iterates sequentially until the heat transfer rates and temperatures converge:
+In indirect configurations, the primary Solar Salt loop is decoupled from the TES secondary loop by a physical heat exchanger (HX). TESPy solves the primary loop using a guessed secondary inlet temperature, and the Schumann model updates the rock bed using the resulting HX hot-side temperature. The system iterates sequentially until the heat transfer rates and temperatures converge:
 
 ```mermaid
 sequenceDiagram
@@ -643,7 +643,7 @@ sequenceDiagram
 ```
 
 ### 6.2 Direct Configuration Coupling (Two-Tank, Mode 1)
-In the Series/Direct configuration, there is no decoupling HX. The primary NaK flows directly through both the Hot Tank and Cold Tank beds, which are modeled in TESPy as simple pipe components (`SimpleHeatExchanger`). The coupling boundary variables are the outlet temperatures of both tanks, which are set as boundary conditions on the primary connections `conn_ht_ph.T` and `conn_10.T`.
+In the Series/Direct configuration, there is no decoupling HX. The primary Solar Salt flows directly through both the Hot Tank and Cold Tank beds, which are modeled in TESPy as simple pipe components (`SimpleHeatExchanger`). The coupling boundary variables are the outlet temperatures of both tanks, which are set as boundary conditions on the primary connections `conn_ht_ph.T` and `conn_10.T`.
 
 The direct coupling loop iterates as follows:
 1. **Initial guess**: The Hot Tank and Cold Tank outlet temperatures are initialized to their current bottom-of-bed temperatures (`hot_tes.profile[-1]` and `cold_tes.profile[-1]`).
@@ -752,7 +752,7 @@ where:
 
 ## 10. Seasonal Winter Control Logic & Tank Auxiliary Heaters
 
-To maintain the storage beds at operational readiness and prevent freezing of the sodium-potassium alloy (NaK) during winter, the system incorporates an active tank auxiliary heating blanket model and seasonal setpoint control.
+To maintain the storage beds at operational readiness and prevent freezing of the Solar Salt during winter, the system incorporates an active tank auxiliary heating blanket model and seasonal setpoint control.
 
 ### 10.1 Winter Control Logic
 The `WinterLogic` class dynamically manages target storage tank temperature setpoints based on the month of the simulation:

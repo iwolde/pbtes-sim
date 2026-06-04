@@ -1,0 +1,385 @@
+\documentclass[article,11pt]{article}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{booktabs}
+\usepackage{siunitx}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{hyperref}
+\usepackage{geometry}
+\geometry{a4paper, margin=1in}
+
+\title{Methodology: Solar Thermal Plant with Packed Bed Thermal Energy Storage (PBTES) for Zinc Galvanizing Process Heat}
+\author{Research Team}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\section{System Configurations and Topologies}
+To evaluate the integration of a parabolic trough collector (PTC) solar field with a packed bed thermal energy storage (PBTES) system and a dynamic zinc galvanizing process, four distinct configurations are defined. These are structured as a $2 \times 2$ matrix based on:
+\begin{enumerate}
+    \item \textbf{Fluid Coupling}: \textit{Indirect} configurations utilize intermediate heat exchangers (HXs) to decouple the primary solar/process loop from the storage loop, whereas \textit{Direct} configurations route the primary heat transfer fluid (HTF) directly through the storage vessel.
+    \item \textbf{Flow Routing Topology}: \textit{Parallel} flow paths allow the HTF leaving the solar field to split simultaneously between charging the storage and supplying the process, whereas \textit{Series} flow paths route the fluid sequentially through the components.
+\end{enumerate}
+
+The physical layout, boundaries, and coupling characteristics of these four systems are summarized below:
+\begin{itemize}
+    \item \textbf{Parallel Indirect (PI)}: The baseline layout. The PTC field can split fluid between the process heat exchanger (\text{Process\_HX}) and a dedicated charging heat exchanger (\text{Charge\_TES\_HX}). A secondary discharge heat exchanger (\text{Discharge\_TES\_HX}) connects the storage loop to the process preheater. This layout decouples HTF inventories and operating pressures.
+    \item \textbf{Series Indirect (SI)}: Fluid flows in a single loop sequentially (PTC $\to$ Preheater HX $\to$ Process HX $\to$ Charge HX $\to$ PTC). Because the charging heat exchanger is downstream of the process, it only receives HTF after the process has extracted heat. This limits the maximum charging temperature to the process return temperature ($\sim \SI{480}{\celsius}$).
+    \item \textbf{Parallel Direct (PD)}: Eliminates the intermediate charging and discharging heat exchangers. The primary HTF (Solar Salt) splits after leaving the PTC field. The charging branch enters the top of the Hot Tank directly, and the process return enters the Cold Tank. Discharging is managed via a direct parallel mixing scheme.
+    \item \textbf{Series Direct (SD)}: Uses two direct-contact storage vessels (Hot Tank and Cold Tank) connected sequentially. In charging mode, the Hot Tank is upstream of the process (receiving high-temperature PTC fluid at $\sim \SI{560}{\celsius}$) and the Cold Tank is downstream of the process (receiving the process return at $\sim \SI{480}{\celsius}$). Pumping loops are shared, and no decoupling heat exchangers are used.
+\end{itemize}
+
+\section{Mathematical and Physics Models}
+
+\subsection{Parabolic Trough Collector (PTC) Solar Field}
+The solar field converts Direct Normal Irradiance ($DNI$) into useful thermal power. The net thermal power output ($\dot{Q}_{\text{ptc}}$) delivered to the heat transfer fluid is modeled as:
+\begin{equation}
+    \dot{Q}_{\text{ptc}} = A_{\text{ptc}} \left[ E \cdot \eta_{\text{opt}} \cdot K(\theta) - \dot{q}_{\text{losses}} \right]
+\end{equation}
+where $A_{\text{ptc}}$ is the total collector aperture area ($\SI{1000}{m^2}$ baseline), $E$ is the Direct Normal Irradiance ($DNI$) from the weather data ($\si{W.m^{-2}}$), and $\eta_{\text{opt}}$ is the design-point optical efficiency ($0.816$). 
+
+The incident angle modifier $K(\theta)$ adjusts for optical losses at non-normal sun angles:
+\begin{equation}
+    K(\theta) = 1 + \text{iam}_1 \theta + \text{iam}_2 \theta^2
+\end{equation}
+with coefficients $\text{iam}_1 = \num{-1.59e-3} \ \si{deg^{-1}}$ and $\text{iam}_2 = \num{9.77e-5} \ \si{deg^{-2}}$, where $\theta$ is the solar incidence angle.
+
+Area-specific thermal heat losses ($\dot{q}_{\text{losses}}$) from the receiver tube to the surroundings are calculated as:
+\begin{equation}
+    \dot{q}_{\text{losses}} = c_1 \left(T_{\text{ptc,avg}} - T_{\text{amb}}\right) + c_2 \left(T_{\text{ptc,avg}} - T_{\text{amb}}\right)^2
+\end{equation}
+with loss coefficients $c_1 = \SI{0.0622}{W.m^{-2}.K^{-1}}$ and $c_2 = \SI{0.00023}{W.m^{-2}.K^{-2}}$. The average fluid temperature in the collector is $T_{\text{ptc,avg}} = (T_{\text{ptc,in}} + T_{\text{ptc,out}})/2$, and $T_{\text{amb}}$ is the dry-bulb ambient temperature.
+
+\subsection{Heat Transfer Fluid: Solar Salt}
+The primary working fluid is Solar Salt (commercial molten sodium-potassium nitrate salt), modeled using the CoolProp library property formulation (\texttt{INCOMP::NaK}). This fluid operates safely up to $\SI{600}{\celsius}$ (clamped between $\SI{300}{\celsius}$ and $\SI{600}{\celsius}$ in the simulation to prevent freezing/crystallization and thermal degradation), offering high temperature thermal stability, a specific heat capacity in the range of $\SI{1500}{J.kg^{-1}.K^{-1}}$, and thermal conductivity around $\SI{0.53}{W.m^{-1}.K^{-1}}$. For parametric comparison, a low-cost reference system utilizing air as the HTF is also modeled.
+
+\subsection{Packed Bed Thermal Energy Storage (PBTES)}
+The storage tank is modeled using the classical 1D Schumann model, representing a packed bed of solid rock or ceramic pebbles ($d_p = \SI{50}{mm}$, void fraction $\varepsilon = 0.40$, solid density $\rho_s = \SI{3500}{kg.m^{-3}}$, and specific heat $c_{p,s} = \SI{968}{J.kg^{-1}.K^{-1}}$). The governing transient conservation equations for the fluid ($T_f$) and solid ($T_s$) phases are:
+\begin{equation}
+    \frac{\partial T_f}{\partial t} + u \frac{\partial T_f}{\partial z} = \frac{h_v}{\rho_f c_{p,f} \varepsilon} \left(T_s - T_f\right) - \frac{U_{\text{tank}} P}{\rho_f c_{p,f} A_{\text{bed}} \varepsilon} \left(T_f - T_{\text{amb}}\right)
+\end{equation}
+\begin{equation}
+    \frac{\partial T_s}{\partial t} = \frac{h_v}{\rho_s c_{p,s} (1 - \varepsilon)} \left(T_f - T_s\right)
+\end{equation}
+where $z$ is the axial coordinate along the bed height ($0 \le z \le H$), $u$ is the interstitial fluid velocity ($u = \dot{m} / (\rho_f A_{\text{bed}} \varepsilon)$), and $U_{\text{tank}}$ is the tank overall heat loss coefficient to the environment ($\SI{0.15}{W.m^{-2}.K^{-1}}$). The volumetric heat transfer coefficient $h_v$ is calculated from the particle-scale convection coefficient $h_{sf}$:
+\begin{equation}
+    h_v = \frac{6 (1 - \varepsilon)}{d_p} h_{sf}
+\end{equation}
+where $h_{sf}$ is determined from the Wakao-Kaguei correlation:
+\begin{equation}
+    Nu = \frac{h_{sf} d_p}{k_f} = 2.0 + 1.1 Re^{0.6} Pr^{1/3}
+\end{equation}
+
+The equations are discretized spatially into 20 nodes and solved at each timestep using an analytical eigenvalue formulation. This exact analytical solution eliminates numerical diffusion, preserving the physical gradient of the thermocline.
+
+The thermodynamic State of Charge ($SoC$) represents the normalized sensible energy stored in the bed relative to the uniform hot ($T_{\text{hot\_ref}} = \SI{560}{\celsius}$) and cold ($T_{\text{cold\_ref}} = \SI{400}{\celsius}$) reference states:
+\begin{equation}
+    SoC(t) = \frac{\int_0^H \left[ \varepsilon \rho_f c_{p,f} (T_f(z, t) - T_{\text{cold\_ref}}) + (1-\varepsilon) \rho_s c_{p,s} (T_s(z, t) - T_{\text{cold\_ref}}) \right] dz}{\int_0^H \left[ \varepsilon \rho_f c_{p,f} (T_{\text{hot\_ref}} - T_{\text{cold\_ref}}) + (1-\varepsilon) \rho_s c_{p,s} (T_{\text{hot\_ref}} - T_{\text{cold\_ref}}) \right] dz}
+\end{equation}
+
+\subsection{Dynamic Zinc Pool (Process Load)}
+The zinc galvanizing bath is modeled as a dynamic lumped-capacitance system representing $150,000\ \si{kg}$ of molten zinc at a nominal operating target temperature of $\SI{450}{\celsius}$ ($c_{p,\text{Zn}} = \SI{512}{J.kg^{-1}.K^{-1}}$). The governing thermal energy balance is:
+\begin{equation}
+    \left(m_{\text{Zn}} c_{p,\text{Zn}}\right) \frac{dT_{\text{Zn}}}{dt} = \dot{Q}_{hx} - \dot{Q}_{\text{losses}} - \dot{Q}_{\text{production}}
+\end{equation}
+where $\dot{Q}_{hx}$ is the heat transfer rate from the primary loop process heat exchanger into the bath, $\dot{Q}_{\text{losses}}$ is the heat loss to the ambient environment, and $\dot{Q}_{\text{production}}$ is the production load.
+
+The heat loss through the tank walls to the surroundings is modeled as:
+\begin{equation}
+    \dot{Q}_{\text{losses}} = (UA)_{\text{loss}} \left(T_{\text{Zn}} - T_{\text{amb}}\right)
+\end{equation}
+where $(UA)_{\text{loss}} = \SI{500}{W.K^{-1}}$.
+
+The production thermal load accounts for heating cold steel parts from ambient to the bath temperature:
+\begin{equation}
+    \dot{Q}_{\text{production}} = \dot{m}_{\text{steel}} c_{p,\text{steel}} \left(T_{\text{Zn}} - T_{\text{steel,in}}\right)
+\end{equation}
+where $c_{p,\text{steel}} = \SI{480}{J.kg^{-1}.K^{-1}}$ and $T_{\text{steel,in}} = \SI{25}{\celsius}$. The steel throughput $\dot{m}_{\text{steel}}$ is $\SI{5000}{kg.h^{-1}}$ during active production hours ($\SI{8:00}{AM}$ to $\SI{8:00}{PM}$, Monday through Friday) and $\SI{0}{kg.h^{-1}}$ during standby nights and weekends.
+
+Equation (9) is solved using an explicit Euler integration scheme with a timestep $\Delta t = \SI{1}{hour}$ (\SI{3600}{s}):
+\begin{equation}
+    T_{\text{Zn}}^{n+1} = T_{\text{Zn}}^n + \frac{\Delta t}{m_{\text{Zn}} c_{p,\text{Zn}}} \left( \dot{Q}_{hx}^n - \dot{Q}_{\text{losses}}^n - \dot{Q}_{\text{production}}^n \right)
+\end{equation}
+
+\section{Thermodynamic Network Integration and Sizing}
+
+\subsection{Design Sizing and Process HX Off-design Coupling}
+The thermodynamic loop is solved using a quasi-steady approach implemented in the TESPy library. At the design point (irradiance $E_{\text{des}} = \SI{900}{W.m^{-2}}$, ambient $T_{\text{amb,des}} = \SI{20}{\celsius}$), the components are sized to deliver a process heat rate of $\dot{Q}_{\text{proc,des}} = \SI{450}{kW}$ with primary loop design constraints $T_{\text{inlet,des}} = \SI{520}{\celsius}$ (Connection 5) and $T_{\text{return,des}} = \SI{480}{\celsius}$ (Connection 6). This sizes the conductance-area product ($kA$) of the heat exchangers.
+
+During transient off-design simulations, the process HX outlet temperature is unconstrained and coupled to the dynamic zinc pool temperature via a terminal temperature difference (TTD) boundary condition:
+\begin{equation}
+    T_{h,\text{out}} = T_{\text{Zn}} + \Delta T_{\text{TTD}}
+\end{equation}
+where $\Delta T_{\text{TTD}} = \SI{20}{K}$. TESPy computes the actual heat duty $\dot{Q}_{hx}$ delivered to the bath based on the fixed physical conductance $kA$, the hot-side inlet conditions, and the boundary condition of Equation (13).
+
+\subsection{PBTES-TESPy Coupling Loop}
+At each timestep, the storage model is coupled to the thermodynamic network solver using an iterative boundary matching protocol:
+\begin{enumerate}
+    \item Initialize the guess for the PBTES boundary return temperature: $T_{\text{return}}^0 = T_{\text{bed\_bottom}}(z=H, t)$ (charging) or $T_{\text{return}}^0 = T_{\text{bed\_top}}(z=0, t)$ (discharging).
+    \item Solve the off-design TESPy network with $T_{\text{return}}^0$ imposed as a connection boundary constraint. TESPy returns the mass flow rate ($\dot{m}_{\text{HTF}}$) and the inlet temperature ($T_{\text{inlet}}$) to the bed.
+    \item Advance the 1D Schumann model forward by $\Delta t$ using $T_{\text{inlet}}$ and $\dot{m}_{\text{HTF}}$, yielding an updated boundary temperature $T_{\text{return}}^{\text{new}}$.
+    \item Check convergence: if $|T_{\text{return}}^{\text{new}} - T_{\text{return}}^0| \ge \SI{1e-3}{K}$, update $T_{\text{return}}^0 = T_{\text{return}}^{\text{new}}$ and return to Step 2. Otherwise, accept the state and advance to the next timestep.
+\end{enumerate}
+
+\subsection{Analytical Discharging Mixing (Option A)}
+To avoid matrix singularities and flow-reversal solver crashes in the direct configurations (PD and SD) during Mode 3 discharging, a parallel-tank analytical mixing scheme is used. The blending ratio ($r$) of mass flows from the Hot and Cold tanks to meet the target process temperature ($T_{\text{target}} = \SI{520}{\celsius}$) is solved analytically:
+\begin{equation}
+    r = \frac{\dot{m}_{\text{hot}}}{\dot{m}_{\text{cold}}} = \frac{T_{\text{target}} - T_{\text{cold}}}{T_{\text{hot}} - T_{\text{target}}}
+\end{equation}
+where $T_{\text{hot}}$ and $T_{\text{cold}}$ are the temperatures at the top of the Hot and Cold tanks. The total mass flow rate $\dot{m}_{\text{total}}$ required by the process dictates the individual streams:
+\begin{equation}
+    \dot{m}_{\text{hot}} = \frac{r}{1+r} \dot{m}_{\text{total}}, \quad \dot{m}_{\text{cold}} = \frac{1}{1+r} \dot{m}_{\text{total}}
+\end{equation}
+
+If $T_{\text{cold}} \ge \SI{520}{\celsius}$, the cold tank is discharged first ($r \to 0$) to preserve high-temperature heat in the Hot Tank. If $T_{\text{hot}} < \SI{520}{\celsius}$, the Hot Tank alone cannot meet the target; the valve saturates to draw entirely from the Hot Tank ($\dot{m}_{\text{hot}} = \dot{m}_{\text{total}}$), and the auxiliary preheater provides the deficit:
+\begin{equation}
+    \dot{Q}_{\text{aux}} = \dot{m}_{\text{total}} c_{p,\text{HTF}} \left(\SI{520}{\celsius} - T_{\text{hot}}\right)
+\end{equation}
+The Schumann models are updated independently with their respective analytical flow rates $\dot{m}_{\text{hot}}$ and $\dot{m}_{\text{cold}}$, while TESPy solves a simple process-only loop.
+
+\subsection{Adaptive Preheater Control for Direct Configuration Startup}
+In direct configurations, when the storage beds are cold, routing fluid directly through the beds back to the process results in a temperature crash. If the inlet temperature to the process falls below $\SI{300}{\celsius}$, the CoolProp density calculation fails because Solar Salt approaches its freezing point, causing numerical divergence. 
+
+To resolve this thermodynamic lockup, an \textbf{Adaptive Preheater Controller} is integrated into the network solver:
+\begin{equation}
+    \begin{cases}
+    \text{If } T_{\text{hot,out}} < \SI{520}{\celsius}: & Q_{\text{preheater}} = \text{'var'}, \ T_{\text{process,in}} = \SI{520}{\celsius} \\
+    \text{If } T_{\text{hot,out}} \ge \SI{520}{\celsius}: & Q_{\text{preheater}} = 0, \ T_{\text{process,in}} = \text{None}
+    \end{cases}
+\end{equation}
+If the tank outlet is cold, the auxiliary preheater maintains the process inlet at $\SI{520}{\celsius}$, ensuring the process returns HTF at $\SI{480}{\celsius}$ and enabling the solar field to successfully charge the storage without violating CoolProp properties limits.
+
+\section{Seasonal Winter Control Logic and Tank Blankets}
+
+\subsection{Tank Blanket Heater Thermal Model}
+To prevent Solar Salt from freezing during low-solar winter months (June, July, August) or periods of extended standby, active electric heater blankets are wrapped around the tank walls. The heat transfer model for structural node $i$ of the bed includes thermal capacity and insulation losses:
+\begin{equation}
+    E_{\text{blanket}, i} = \left( \dot{Q}_{\text{to\_tank}, i} + \dot{Q}_{\text{to\_env}, i} \right) \Delta t
+\end{equation}
+where:
+\begin{equation}
+    \dot{Q}_{\text{to\_tank}, i} = C_{\text{eff}, i} \frac{T_{\text{set}} - T_{\text{new,unheated}, i}}{\Delta t}
+\end{equation}
+\begin{equation}
+    \dot{Q}_{\text{to\_env}, i} = \frac{T_{\text{set}} - T_{\text{amb}}}{R_{\text{ins}, i} + R_{\text{conv}, i}}
+\end{equation}
+$C_{\text{eff}, i}$ is the effective thermal capacitance of tank node $i$, $T_{\text{set}}$ is the target setpoint, $T_{\text{new,unheated}, i}$ is the node temperature before heating, $R_{\text{ins}, i}$ is the insulation conductive resistance, and $R_{\text{conv}, i}$ is the ambient convective resistance.
+
+\subsection{Winter Logic Setpoints and Regimes}
+The setpoint temperature $T_{\text{set}}$ is dynamically scheduled by a seasonal controller:
+\begin{itemize}
+    \item \textbf{Production Months (September--May)}: $T_{\text{set\_production}} = \SI{450}{\celsius}$ to keep the storage warm and responsive.
+    \item \textbf{Winter Months (June--August)}: $T_{\text{set\_winter}} = \SI{300.1}{\celsius}$ (just above the CoolProp properties boundary) to minimize auxiliary electrical energy while preventing freeze-up.
+\end{itemize}
+
+In the Parallel Indirect layout, the decoupled charging mode (Mode 6) operates under two corresponding regimes:
+\begin{itemize}
+    \item \textbf{Regime A (Winter)}: Mode 6 charges the storage to maintain the winter threshold $T_{\text{set\_winter}} = \SI{300.1}{\celsius}$.
+    \item \textbf{Regime B (Production)}: Mode 6 charges the storage to the production readiness level $T_{\text{set\_production}} = \SI{450}{\celsius}$.
+\end{itemize}
+
+\section{Operating Mode Selection}
+The system operates under 6 distinct operating modes, selected at each timestep based on solar irradiance ($E$), state of charge ($SoC$), and storage top temperature ($T_{\text{top}}$). The selection rules are:
+\begin{enumerate}
+    \item \textbf{Mode 1 (Simultaneous Solar Charge \& Process)}: Active when solar resource is abundant ($E \ge E_{\text{charge}}$), storage is not fully charged ($SoC < 0.99$), and the PTC outlet is hotter than the storage top ($T_{\text{ptc}} > T_{\text{tes,top}}$).
+    \item \textbf{Mode 2 (Solar to Process Only)}: Active when solar resource is sufficient to assist the process ($E \ge E_{\text{process}}$), but the storage is full ($SoC \ge 0.99$) or charging is not viable.
+    \item \textbf{Mode 3 (TES Discharge to Process)}: Selected when solar resource is insufficient ($E < E_{\text{process}}$), the storage has available charge ($SoC > 0.05$), and the top bed temperature is viable ($T_{\text{top}} \in [\SI{500}{\celsius}, \SI{580}{\celsius}]$).
+    \item \textbf{Mode 4 (Auxiliary Standby)}: Selected when there is no solar resource ($E < E_{\text{process}}$) and the storage is depleted ($SoC \le 0.05$). The process is served entirely by the auxiliary heater.
+    \item \textbf{Mode 5 (High-Temperature Solar Charge)}: Parallel-only mode. Selected when solar resource is abundant ($E \ge E_{\text{charge}}$), the tank top is hot ($T_{\text{top}} > \SI{520}{\celsius}$), and $SoC < 0.90$. The auxiliary heater assists the process while surplus high-temperature solar heat charges the bed.
+    \item \textbf{Mode 6 (Decoupled Solar Charge)}: Parallel-only mode. Active when solar resource is available ($E \ge E_{\text{process}}$) but the storage is cold ($SoC < 0.40$ and $T_{\text{top}} < \SI{470}{\celsius}$). The process runs on an independent auxiliary loop, while the solar field charges the storage until it reaches a warm state.
+\end{enumerate}
+
+Irradiance thresholds are calculated as:
+\begin{equation}
+    E_{\text{process}} = \frac{\dot{Q}_{\text{proc,des}}}{A_{\text{ptc}} \eta_{\text{opt}}} \approx \SI{49}{W.m^{-2}}
+\end{equation}
+\begin{equation}
+    E_{\text{charge}} = 1.5 \cdot E_{\text{process}} \approx \SI{74}{W.m^{-2}}
+\end{equation}
+
+\section{Post-Processed Metrics and Pumping Power}
+To maintain the mathematical convergence and robustness of the steady-state solver, fluid friction and pumping power are calculated via post-processing rather than inline within the solver matrix.
+
+\subsection{Pressure Drop Modeling}
+Pressure drops ($\Delta p$) across heat exchangers and piping loops are characterized using quadratic flow relations:
+\begin{equation}
+    \Delta p_{\text{pipe}} = \alpha \cdot \dot{m}^2
+\end{equation}
+where $\alpha$ is a structural flow coefficient sized at the design point.
+
+For the PBTES storage tanks, the pressure drop is modeled via the Ergun equation:
+\begin{equation}
+    \frac{\Delta p_{\text{bed}}}{H} = 150 \frac{(1 - \varepsilon)^2}{\varepsilon^3} \frac{\mu_f u_0}{d_p^2} + 1.75 \frac{1 - \varepsilon}{\varepsilon^3} \frac{\rho_f u_0^2}{d_p}
+\end{equation}
+where $H$ is the bed height, $\mu_f$ and $\rho_f$ are the dynamic viscosity and density of Solar Salt evaluated at the average bed temperature, and $u_0$ is the superficial fluid velocity ($u_0 = \dot{m} / (\rho_f A_{\text{bed}})$).
+
+\subsection{Pumping Power and Net Solar Fraction}
+The electrical power consumed by the pumps is:
+\begin{equation}
+    W_{\text{pump}} = \sum_j \frac{\dot{m}_j \Delta p_j}{\rho_f \eta_{\text{pump}}}
+\end{equation}
+where $\eta_{\text{pump}} = 0.75$ is the pump-motor efficiency.
+
+The net solar fraction ($SF_{\text{net}}$) is adjusted to penalize the thermal solar fraction by the electrical work consumed, converted to equivalent thermal energy using the reference thermal-to-electrical efficiency of the grid ($\eta_{\text{power\_cycle}} = 0.35$):
+\begin{equation}
+    SF_{\text{net}} = \frac{\sum \left( \dot{Q}_{\text{solar,proc}} + \dot{Q}_{\text{tes,proc}} \right) \Delta t - \frac{W_{\text{pump,total}} \Delta t}{\eta_{\text{power\_cycle}}}}{\sum \left( \dot{Q}_{\text{solar,proc}} + \dot{Q}_{\text{tes,proc}} + \dot{Q}_{\text{aux,proc}} \right) \Delta t}
+\end{equation}
+
+\section{Exergy and Exergoeconomic Costing Assessments}
+
+\subsection{System-Level Exergy Accounting}
+The thermodynamic quality of energy flows is evaluated using second-law exergy analysis. The solar exergy input entering the collector aperture ($\dot{E}x_{\text{solar}}$) is derived from Petela's theorem:
+\begin{equation}
+    \dot{E}x_{\text{solar}} = \dot{Q}_{\text{sun,incident}} \left[ 1 - \frac{4}{3}\left(\frac{T_0}{T_{\text{sun}}}\right) + \frac{1}{3}\left(\frac{T_0}{T_{\text{sun}}}\right)^4 \right]
+\end{equation}
+where $\dot{Q}_{\text{sun,incident}} = E \cdot A_{\text{ptc}}$, $T_{\text{sun}} = \SI{5770}{K}$ is the equivalent blackbody temperature of the sun, and $T_0$ is the ambient temperature in Kelvin.
+
+The auxiliary energy input is treated as high-quality electrical/combustion heat with a quality factor of unity ($\psi_{\text{aux}} = 1.0$), yielding:
+\begin{equation}
+    \dot{E}x_{\text{aux}} = \dot{Q}_{\text{aux}} \cdot 1.0
+\end{equation}
+
+The useful product exergy ($\dot{E}x_{\text{product}}$) delivered to the dynamic zinc pool at temperature $T_{\text{Zn}}$ is:
+\begin{equation}
+    \dot{E}x_{\text{product}} = \dot{Q}_{\text{hx}} \left[ 1 - \frac{T_0}{T_{\text{Zn}}} \right]
+\end{equation}
+where $T_{\text{Zn}}$ is in Kelvin.
+
+The overall plant exergy efficiency ($\eta_{\text{exergy}}$) is:
+\begin{equation}
+    \eta_{\text{exergy}} = \frac{\int \dot{E}x_{\text{product}} \, dt}{\int \left( \dot{E}x_{\text{solar}} + \dot{E}x_{\text{aux}} \right) dt}
+\end{equation}
+
+\subsection{Component-Level Exergy Destruction}
+The exergy rate balance for any component $k$ operating in quasi-steady state is expressed as:
+\begin{equation}
+    \dot{E}x_{D, k} = \sum_{\text{in}} \dot{m} ex - \sum_{\text{out}} \dot{m} ex + \sum \left(1 - \frac{T_0}{T_j}\right) \dot{Q}_j - \dot{W}_k
+\end{equation}
+where $ex = (h - h_0) - T_0(s - s_0)$ is the specific flow exergy. 
+
+Within the PBTES tank, the transient exergy destruction ($\dot{E}x_{D,\text{TES}}$) is caused by heat loss through the walls and internal thermocline mixing:
+\begin{equation}
+    \dot{E}x_{D,\text{TES}} = \dot{E}x_{\text{in,fluid}} - \dot{E}x_{\text{out,fluid}} - \frac{dEx_{\text{stored}}}{dt} - \dot{E}x_{L,\text{ambient}}
+\end{equation}
+where the total exergy stored in the bed is:
+\begin{equation}
+    Ex_{\text{stored}}(t) = \int_0^H \left[ \varepsilon \rho_f ex_f(T_f) + (1-\varepsilon) \rho_s ex_s(T_s) \right] A_{\text{bed}} \, dz
+\end{equation}
+and the exergy loss rate through the insulation is:
+\begin{equation}
+    \dot{E}x_{L,\text{ambient}} = \int_0^H U_{\text{tank}} P (T_f - T_0)\left(1 - \frac{T_0}{T_f}\right) dz
+\end{equation}
+
+\subsection{Specific Exergy Costing and Exergoeconomic Evaluation}
+For each component $k$, an exergoeconomic cost balance determines specific costs of exergy streams ($\text{USD.MWh}^{-1}$):
+\begin{equation}
+    \sum_{\text{out}} \dot{C}_{\text{out}, k} = \sum_{\text{in}} \dot{C}_{\text{in}, k} + \dot{Z}_k
+\end{equation}
+where $\dot{C}_j = c_j \dot{E}x_j$ is the cost rate of exergy stream $j$, and $\dot{Z}_k$ is the annualized capital and O\&M cost rate of the component ($\text{USD.h}^{-1}$). Solar exergy is assumed free ($c_{\text{solar}} = 0$), while auxiliary fuel and electricity represent cash operating expenditures.
+
+The cost rate associated with exergy destruction within component $k$ represents the monetary loss of useful energy:
+\begin{equation}
+    \dot{C}_{D, k} = c_{\text{fuel}, k} \dot{E}x_{D, k}
+\end{equation}
+where $c_{\text{fuel}, k}$ is the average unit cost of exergy input (fuel/electricity) to the component.
+
+The exergoeconomic factor ($f_k$) evaluates component cost-effectiveness:
+\begin{equation}
+    f_k = \frac{\dot{Z}_k}{\dot{Z}_k + \dot{C}_{D, k}}
+\end{equation}
+A low $f_k$ ($f_k \to 0$) implies that exergy destruction dominates, suggesting that the thermodynamic efficiency of the component should be improved even at a higher capital cost. A high $f_k$ ($f_k \to 1$) indicates that capital expenditure is too high compared to energy savings, suggesting cost reduction is needed.
+
+\section{Dynamic Operation and Control Stability Assessments}
+
+\subsection{Markovian Mode Transition Frequency}
+To evaluate the stability of the plant's control system and the physical impact of dynamic changes on system components, a Markovian mode transition matrix ($\mathbf{M}$) is evaluated over the annual simulation:
+\begin{equation}
+    M_{ij} = \sum_{t=2}^{8760} \delta(TESmode_{t-1}, i) \cdot \delta(TESmode_t, j)
+\end{equation}
+where $M_{ij}$ is the number of transitions from operating mode $i$ to mode $j$, and $\delta$ is the Kronecker delta. A high frequency of diagonal-off transitions indicates rapid control oscillations (switching), which can cause thermal fatigue in piping and the storage vessel.
+
+\subsection{State of Thermal Potential (STP)}
+To monitor the dynamic state of the storage and establish a non-arbitrary stopping criterion for the charging and discharging processes, the State of Thermal Potential ($STP$) metric proposed by Calderón-Vásquez et al. (2025) is utilized in place of simple spatial thermocline thickness tracking. The $STP(t)$ represents the ratio between the actual stored thermal potential in time and the ideal maximum storage potential where the hot and cold parts of the bed are perfectly separated:
+\begin{equation}
+    STP(t) = \begin{cases}
+    \frac{T_T(t_0) - T_B(t_0)}{T_H - T_L} & t = t_0 \\
+    \frac{1}{(T_H - T_L)(t - t_0)} \int_{t_0}^t \left( T_T(t') - T_B(t') \right) dt' & t > t_0
+    \end{cases}
+\end{equation}
+where $T_T(t)$ and $T_B(t)$ are the measured temperatures at the top and bottom of the porous medium, respectively. $T_H$ is the hot source temperature (charging inlet, e.g., $\sim \SI{560}{\celsius}$) and $T_L$ is the low-temperature sink (process return, e.g., $\sim \SI{480}{\celsius}$). 
+
+\subsubsection{Charging Cut-off Criterion}
+During charging, the $STP(t)$ curve increases as the bed is heated, reaching a well-defined maximum value ($STP_{\max}$) at the exact moment where the convective heat transfer at the bottom of the bed begins to dominate over conduction, meaning the thermocline has reached the bottom boundary. Imposing the condition:
+\begin{equation}
+    \frac{dSTP}{dt} = 0
+\end{equation}
+provides a physically-sound stopping criterion that retains the thermocline inside the vessel and maximizes the round-trip efficiency ($\eta_{rt}$).
+
+At the maximum potential ($t = t_{ch}$), the cut-off temperature threshold ($\Delta T_{co, ch} = T_B(t_{ch}) - T_L$) is related directly to the maximum state of thermal potential ($STP_{\max}$) and the maximum operating temperature range ($\Delta T_{\max} = T_H - T_L$) via:
+\begin{equation}
+    \Delta T_{co, ch} = \Delta T_{\max} \left( 1 - STP_{\max} \right)
+\end{equation}
+
+By running parametric simulations, Calderón-Vásquez et al. correlated $STP_{\max}$ to the Number of Heat Transfer Units ($NTU$) of the PBTES tank using a power-law relationship:
+\begin{equation}
+    STP_{\max} = a \cdot NTU^b + c
+\end{equation}
+with empirical parameters fit via Non-linear Least Squares (NLS) to $a = -2.3189$, $b = -1.0436$, and $c = 0.9707$. The target charge cut-off temperature difference is thus predicted directly from the design variables:
+\begin{equation}
+    \Delta T_{co, ch} = \Delta T_{\max} \left( 1 - \left( a \cdot NTU^b + c \right) \right)
+\end{equation}
+
+\section{Multi-Variable Design Space Optimization}
+To establish the optimal design frontiers for each topology, the methodology implements a multi-variable grid search and trade-off analysis.
+
+\subsection{Solar Multiple vs. Storage Volume Pareto Front}
+A grid search covers the combined design space of solar field size (Solar Multiple, $SM$) and storage volume ($V_{\text{tank}}$):
+\begin{itemize}
+    \item Solar Multiple range: $0.5$ to $3.0$ (aperture areas $A_{\text{ptc}} = \SI{500}{m^2}$ to $\SI{3000}{m^2}$)
+    \item Storage volume range: $D = 4.0\text{--}\SI{10.0}{m} \times H = 3.0\text{--}\SI{8.0}{m}$ ($\sim \SI{38}{m^3}$ to $\SI{628}{m^3}$)
+\end{itemize}
+The optimization objectives are to simultaneously maximize the net solar fraction ($SF_{\text{net}}$) and minimize the Levelized Cost of Heat ($LCOH$), yielding a topology-specific Pareto optimal curve.
+
+\subsection{HTF Physical-Economic Trade-off}
+A direct comparison is carried out between the primary Solar Salt HTF and a traditional Air HTF. The assessment evaluates:
+\begin{enumerate}
+    \item Pumping electrical power penalty ($W_{\text{pump,total}}$) caused by viscosity and volumetric flow rate requirements.
+    \item Thermodynamic thermal and exergy losses in heat exchangers (due to different heat transfer coefficients).
+    \item Total economic cost (high chemical cost of Solar Salt vs. low-cost piping/pumping systems for Air).
+\end{enumerate}
+
+\section{Economic Assessment and LCOH}
+The Levelized Cost of Heat ($LCOH$) evaluates the lifecycle economic cost of thermal energy delivered to the process. The total capital expenditure ($CAPEX$) comprises the solar field, storage tank and fill material, HTF inventory, pumps, heat exchangers, and a base CAPEX:
+\begin{equation}
+    CAPEX_{\text{total}} = CAPEX_{\text{ptc}} + CAPEX_{\text{tes}} + CAPEX_{\text{pumps}} + \sum CAPEX_{\text{hx}} + CAPEX_{\text{base}}
+\end{equation}
+where:
+\begin{itemize}
+    \item $CAPEX_{\text{ptc}} = A_{\text{ptc}} \cdot 200 \ \si{USD.m^{-2}}$
+    \item $CAPEX_{\text{tes}} = V_{\text{tank}} \cdot C_{\text{tank}} + m_{\text{HTF}} \cdot C_{\text{HTF}} + V_{\text{tank}}(1-\varepsilon)\rho_s \cdot C_{\text{fill}}$ (with $C_{\text{tank}} = \SI{500}{USD.m^{-3}}$, $C_{\text{HTF}} = \SI{20}{USD.kg^{-1}}$ for Solar Salt, and $C_{\text{fill}} = \SI{0.10}{USD.kg^{-1}}$)
+    \item $CAPEX_{\text{pumps}} = 20000 + 500 \cdot W_{\text{pump,max,kW}}$
+    \item $CAPEX_{\text{hx}}$ are stubs sized at $\SI{50000}{USD}$ each.
+\end{itemize}
+
+Total $CAPEX$ is annualized using the Capital Recovery Factor ($CRF$):
+\begin{equation}
+    CRF = \frac{r (1 + r)^n}{(1 + r)^n - 1}
+\end{equation}
+where $r$ is the discount rate ($8\%$) and $n$ is the plant lifetime ($25$ years).
+
+The annual operating expenditure ($OPEX_{\text{total}}$) includes electricity costs for pumping, auxiliary heater fuel, and general operation and maintenance (O\&M):
+\begin{equation}
+    OPEX_{\text{total}} = E_{\text{pumping,annual}} \cdot C_{\text{electricity}} + Q_{\text{aux,annual}} \cdot C_{\text{fuel}} + f_{\text{om}} \cdot CAPEX_{\text{total}}
+\end{equation}
+where $C_{\text{electricity}} = \SI{0.12}{USD.kWh^{-1}}$, $C_{\text{fuel}} = \SI{0.06}{USD.kWh^{-1}}$, and $f_{\text{om}} = 2\%$ is the annual O\&M fraction.
+
+Finally, the $LCOH$ ($\text{USD.MWh}^{-1}$) is defined as:
+\begin{equation}
+    LCOH = \frac{CRF \cdot CAPEX_{\text{total}} + OPEX_{\text{total}}}{Q_{\text{delivered,annual}}}
+\end{equation}
+where $Q_{\text{delivered,annual}}$ is the total thermal energy supplied to the process (solar, TES discharge, and auxiliary) in $\si{MWh}$.
+
+\end{document}

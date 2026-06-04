@@ -69,7 +69,7 @@ class ZincPool:
         return self.UA * (self.temperature - T_amb) / 1000.0
 
     def process_outlet_temp(self):
-        """NaK temperature required at process HX outlet to drive heat
+        """Solar Salt temperature required at process HX outlet to drive heat
         transfer into the zinc pool (zinc temperature + TTD)."""
         return self.temperature + self.TTD
 

@@ -8,7 +8,7 @@ network solving and a 1D Schumann model for the packed bed.
 
 ### Key Decisions (settled — do not change without user approval)
 
-- **HTF**: NaK (`INCOMP::NaK` in CoolProp) — primary. Air — comparison only.
+- **HTF**: Solar Salt (commercial Sodium-Potassium Nitrate, represented as `INCOMP::NaK` in CoolProp) — primary. Air — comparison only.
 - **Zinc pool**: Always ON for production simulations. Fixed-demand (constant
   heat flux) legacy mode retained for testing and comparison.
 - **Pump power**: Post-processed from quasi-steady results (Ergun equation).

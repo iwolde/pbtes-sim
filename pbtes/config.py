@@ -154,7 +154,7 @@ class HTFConfig:
 
     # ── Temperature limits ─────────────────────────────────────────────
     T_min: float = 300.0              # °C — minimum valid temp (CoolProp / physics)
-    T_max: float = 700.0              # °C — maximum valid temp (NaK safe limit)
+    T_max: float = 700.0              # °C — maximum valid temp (Solar Salt limit)
     T_min_clamp: float = 300.1        # °C — numerical clamp in packed_bed
 
     # ── Allowed alternative fluids ─────────────────────────────────────
@@ -263,7 +263,7 @@ class SolverConfig:
     retry_h_bounds: Tuple[float, float] = (500.0, 1000.0)  # kJ/kg
 
     # ── Mode-selection thresholds ──────────────────────────────────────
-    T_max_discharge: float = 580.0    # °C — NaK safe limit −20 K
+    T_max_discharge: float = 580.0    # °C — Solar Salt limit −20 K
     soc_empty_ref: float = 400.0      # °C — uniform profile for SoC=0 reference
     soc_full_ref: float = 560.0       # °C — uniform profile for SoC=1 reference
 
@@ -422,7 +422,7 @@ class SimulationConfig:
 def baseline_config():
     """
     Return the three dicts expected by Solver.__init__ for the
-    canonical baseline design (Parallel topology, NaK HTF, indirect tank).
+    canonical baseline design (Parallel topology, Solar Salt HTF, indirect tank).
 
     Returns
     -------

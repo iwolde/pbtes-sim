@@ -1,4 +1,4 @@
-﻿# External Integrations
+# External Integrations
 
 ## Data Input Sources
 
@@ -14,7 +14,7 @@
 ### Fluid Property Data (via CoolProp)
 | Fluid ID | Type | Application |
 |----------|------|-------------|
-| INCOMP::NaK | Incompressible fluid | Primary HTF in parabolic trough |
+| INCOMP::NaK | Incompressible fluid | Primary HTF (Solar Salt) in parabolic trough |
 | Air | Ideal gas | TES heat transfer fluid |
 | Water | Pure fluid | Backup HTF |
 | CO2 | Pure fluid | Backup working fluid |

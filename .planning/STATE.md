@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Production Runs & Exergoeconomics
-status: Phase C Refinement — Integrated custom in-house PTC model with full backward compatibility, resolved Windows file lock conflicts during cache-clearing initialization, and successfully verified convergence of Parallel/Indirect and Series/Direct layouts, with all tests passing.
-last_updated: "2026-06-04T16:40:00-04:00"
+status: Phase C Refinement — Successfully resolved the Parallel/Indirect (PI) zero-energy charging/discharging issue with the in-house PTC model. Fixed Mode 1 and Mode 6 design over-specifications, verified that all 101 tests pass, and confirmed transient convergence and non-zero charging/discharging.
+last_updated: "2026-06-09T19:30:00-04:00"
 progress:
   total_phases: 4
   completed_phases: 3
   percent: 99
-branch: feature/inhouse-ptc-field
+branch: feature/fix-inhouse-ptc-pi
 ---
 
 # Project State

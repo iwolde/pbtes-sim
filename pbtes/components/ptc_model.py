@@ -184,7 +184,7 @@ class PTCFieldModel:
         
         print(f"[In-house PTC Design] Sizing complete: N_loops={N_loops_real:.4f}, N_modules/loop={N_PTC_real}, m_dot/loop={m_dot_PTC_real:.3f} kg/s, A_tot={self.A_tot:.1f} m2")
 
-    def solve_quasi_steady(self, T_in_C, P_in_bar, Tamb_C, DNI_W_m2, timestamp, htf_fluid='INCOMP::NaK'):
+    def solve_quasi_steady(self, T_in_C, P_in_bar, Tamb_C, DNI_W_m2, timestamp, htf_fluid='INCOMP::NaK', m_dot_field=None):
         """
         Runs hourly solver.
         Returns:
@@ -241,9 +241,12 @@ class PTCFieldModel:
             # Field not operating: return inlet temp and zero flow
             return T_in_C, 0.0
 
-        if mode == 'constant_m_dot':
+        if mode == 'constant_m_dot' or m_dot_field is not None:
             # CASE 1: Constant mass flow, variable outlet temperature
-            m_dot_loop = self.m_dot_PTC_real
+            if m_dot_field is not None:
+                m_dot_loop = m_dot_field / self.N_loops_real
+            else:
+                m_dot_loop = self.m_dot_PTC_real
             T_ms_out_h = T_ms_in + 40.0 # first estimate
             
             tol = 0.001

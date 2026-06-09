@@ -119,16 +119,16 @@ class Solver:
         is_series_direct = (self.tank_config == 'direct' and self.topology == 'Series'
                             and hasattr(self.solar_system, 'cold_tes'))
         if is_series_direct:
-            if lay == 'Charge':
+            if lay.lower() == 'charge':
                 TES_top = self.solar_system.hot_tes.profile[0]
                 TES_bot = self.solar_system.cold_tes.profile[-1]
             else:
                 TES_top = self.solar_system.hot_tes.profile[-1]
                 TES_bot = self.solar_system.cold_tes.profile[0]
         else:
-            if lay == 'Charge':
+            if lay.lower() == 'charge':
                 TES_top = TES_profile[0];  TES_bot = TES_profile[-1]
-            else:  # 'Discharge'
+            else:  # 'discharge'
                 TES_top = TES_profile[-1]; TES_bot = TES_profile[0]
             
         t_proc_set = self.solar_system.conexion_params['6_T']
@@ -333,16 +333,22 @@ class Solver:
         # ---- Mode 1 (charge + process, computes kA) ----
         self.system_mode = 'Full'; self.TES_lay = 'Charge'; self.irr = 1000
         is_series_direct = (self.tank_config == 'direct' and self.topology == 'Series')
+        A_ptc = self.component_params.get('ptc_A', 1000.0)
+        eta_opt = self.component_params.get('eta_opt', 0.816)
         
         # Save original process heat demand
         q_proc_orig = self.component_params['PR_Q']
         is_pi = (self.topology == 'Parallel' and self.tank_config == 'indirect')
         
         if is_pi:
-            A_ptc = self.component_params['ptc_A']
-            E_design = self.component_params.get('ptc_E', 900.0)
-            eta_opt = self.component_params.get('eta_opt', 0.816)
-            Q_ptc_design = A_ptc * E_design * eta_opt
+            if self.use_inhouse_ptc:
+                m_ptc_design = self.ptc_model.m_dot_PTC_real * self.ptc_model.N_loops_real
+                Q_ptc_design = m_ptc_design * 1.5e3 * 140.0  # W (design outlet 560C, design inlet 420C, cp=1.5 kJ/kgK)
+            else:
+                A_ptc = self.component_params['ptc_A']
+                E_design = self.component_params.get('ptc_E', 900.0)
+                eta_opt = self.component_params.get('eta_opt', 0.816)
+                Q_ptc_design = A_ptc * E_design * eta_opt
             q_proc_design = -min(abs(q_proc_orig), 0.6 * Q_ptc_design)
             self.component_params['PR_Q'] = q_proc_design
             print(f"[Mode 1 precalculation] Original process Q: {q_proc_orig/1e3:.1f} kW, Design process Q: {q_proc_design/1e3:.1f} kW (Q_ptc_design = {Q_ptc_design/1e3:.1f} kW)")
@@ -355,14 +361,16 @@ class Solver:
         if is_pi:
             # Expected design-point temperatures and flows for Parallel/Indirect design convergence
             if self.use_inhouse_ptc:
-                m_ptc_guess = self.ptc_model.m_dot_PTC_real * self.ptc_model.N_loops_real
-                T_hot_in = 560.0
+                T_hot_in = 520.0
                 T_cold_in = 450.0
                 T10_guess = 470.0
                 T14_guess = 490.0
-                m_process_guess = abs(q_proc_design) / (960.0 * 40.0)
-                m_charge_guess = m_ptc_guess - m_process_guess
-                m_secondary_guess = m_charge_guess
+                cp_ms = 1.5e3
+                m_process_guess = abs(q_proc_design) / (cp_ms * 40.0)
+                m_charge_guess = (Q_ptc_design - abs(q_proc_design)) / (cp_ms * 50.0)
+                m_charge_guess = max(0.5, m_charge_guess)
+                m_ptc_guess = m_process_guess + m_charge_guess
+                m_secondary_guess = m_charge_guess * (50.0 / 40.0)
             else:
                 T_hot_in = 520.0
                 T_cold_in = 450.0
@@ -855,7 +863,7 @@ class Solver:
         else:
             old_profile = np.array(system.tes.profile).copy()
         for iteration in range(max_iter):
-            if self.use_inhouse_ptc and TESmode in ['1', '2', '5', '6']:
+            if self.use_inhouse_ptc and TESmode in ['1', '2', '5', '6'] and mode == 'offdesign':
                 if TESmode == '2':
                     system.conn_02.set_attr(T=None, m=None)
                 else:
@@ -867,14 +875,27 @@ class Solver:
                     else:
                         self.ptc_model.params['ptc_T_out_target'] = 560.0
                         
+                    is_sd = (self.tank_config == 'direct' and self.topology == 'Series')
+                    m_dot_field = None
+                    if not is_sd:
+                        if hasattr(system, 'conn_02') and system.conn_02.m.val is not None and not np.isnan(system.conn_02.m.val):
+                            m_dot_field = system.conn_02.m.val
+                            
                     T_out_C, m_ptc_kg_s = self.ptc_model.solve_quasi_steady(
                         T_in_C=T_in_C, P_in_bar=P_in_bar, Tamb_C=Tamb,
                         DNI_W_m2=self.current_irr, timestamp=t_stamp,
-                        htf_fluid=self.HTF
+                        htf_fluid=self.HTF, m_dot_field=m_dot_field
                     )
                     system.inhouse_ptc_T = T_out_C
                     system.inhouse_ptc_m = m_ptc_kg_s
-                    system.conn_02.set_attr(T=T_out_C, m=m_ptc_kg_s)
+                    
+                    if not is_sd:
+                        if mode == 'design':
+                            system.conn_02.set_attr(T=T_out_C, m=m_ptc_kg_s)
+                        else:
+                            system.conn_02.set_attr(T=T_out_C, m=None)
+                    else:
+                        system.conn_02.set_attr(T=T_out_C, m=m_ptc_kg_s)
             
             if mode == 'offdesign':
                 system.network.set_attr(iterinfo=False)

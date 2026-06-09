@@ -446,7 +446,7 @@ class SolarThermalSystem:
             m_ptc_design = ptc_model.m_dot_PTC_real * ptc_model.N_loops_real
             if getattr(self, 'topology', 'Parallel') == 'Parallel' and TESmode == '1':
                 T_ptc_design = 520.0
-                m_process_design = abs(self.component_params.get('PR_Q', 450000.0)) / (960.0 * 40.0)
+                m_process_design = abs(self.component_params.get('PR_Q', 450000.0)) / (1500.0 * 40.0)
                 m_ptc_design = max(m_ptc_design, m_process_design + 2.0)
             else:
                 T_ptc_design = 560.0
@@ -737,7 +737,10 @@ class SolarThermalSystem:
                 if getattr(self, 'tank_config', 'indirect') == 'indirect':
                     self.conn_13.set_attr(T=TES_bot)
                     if mode == 'design':
-                        self.conn_14.set_attr(T=TES_bot + 40)
+                        if use_inhouse:
+                            self.conn_14.set_attr(T=None)
+                        else:
+                            self.conn_14.set_attr(T=TES_bot + 40)
                     else:
                         m_val = getattr(self, 'tes_charge_m', None)
                         if m_val is None:
@@ -771,6 +774,7 @@ class SolarThermalSystem:
                         )
                     else:
                         self.conn_02.set_attr(T=T_ptc_design, m=m_ptc_design)
+                        self.conn_10.set_attr(T=420.0)
                 else:
                     if not use_inhouse:
                         self.ptc_field.set_attr(
@@ -796,7 +800,8 @@ class SolarThermalSystem:
                     if not use_inhouse:
                         self.ptc_field.set_attr(A='var')
                     else:
-                        self.conn_02.set_attr(T=T_ptc_design, m=m_ptc_design)
+                        self.conn_02.set_attr(T=T_ptc_design, m=None)
+                        self.conn_10.set_attr(T=420.0)
                 else:
                     if not use_inhouse:
                         self.ptc_field.set_attr(E=current_irr)

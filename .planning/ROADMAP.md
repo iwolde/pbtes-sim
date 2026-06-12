@@ -4,8 +4,8 @@
 
 - [x] **Phase A: Foundation & Agent Methodology** — Codebase cleanup, AGENTS.md, planning documents
 - [x] **Phase B: Bug Fixes & Script Consolidation** — Critical bug fixes, unified run_simulation.py entry point
-- [ ] **Phase C: Physics & Convergence** — Fix Mode 1 offdesign, Mode 6 design, converge all modes for all 4 topologies
-- [ ] **Phase D: Results & Publication** — Full-year runs, parametric sweeps, figures, LCOH, paper draft
+- [x] **Phase C: Physics & Convergence** — Fix Mode 1 offdesign, Mode 6 design, converge modes for PI and SD
+- [~] **Phase D: Results & Publication** — Full-year runs, parametric sweeps, figures, LCOH, paper draft (plan: `.planning/PARAMETRIC_SWEEP_PLAN.md`)
 
 ## Phase Details
 
@@ -37,7 +37,7 @@
   5. Mode 1 offdesign converges for Solar Salt fluid.
   6. All results stored as CSV in `results/` with metadata headers.
 **Tasks**: See `TODO.md` — Phase C section.
-**Status**: In progress
+**Status**: Complete
 
 ### Phase D: Publication Output
 **Goal**: Produce all figures, synthesis tables, LCOH analysis, exergoeconomic analysis, and paper draft.
@@ -50,7 +50,7 @@
   4. HTF comparison (Solar Salt vs Air) completed.
   5. All outputs organized in `article_results/`.
 **Tasks**: See `TODO.md` — Phase D section.
-**Status**: Not started
+**Status**: In progress — sweep plan complete
 
 ## Progress
 
@@ -58,5 +58,5 @@
 |-------|--------|
 | A. Foundation & Agent Methodology | Complete |
 | B. Bug Fixes & Script Consolidation | Complete |
-| C. Physics & Convergence | In progress |
-| D. Publication Output | Not started |
+| C. Physics & Convergence | Complete |
+| D. Publication Output | In progress |

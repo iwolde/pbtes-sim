@@ -92,7 +92,9 @@ def run_single_simulation(
     particle_diameter=0.050,
     void_fraction=0.4,
     insulation_thickness=1.0,
-    T_init=None
+    T_init=None,
+    run_id=None,
+    show_progress=True
 ):
     # Load baseline parameters
     tes_params, component_params, conexion_params = baseline_config()
@@ -133,7 +135,9 @@ def run_single_simulation(
         system_mode='Full',
         topology=topology,
         tank_config=tank_config,
-        zinc_pool_params=zinc_params
+        zinc_pool_params=zinc_params,
+        run_id=run_id,
+        show_progress=show_progress
     )
 
     # Initialize TESPy modes
@@ -161,13 +165,16 @@ def run_single_simulation(
     df['zinc_operating'] = df['time'].apply(lambda t: solver.zinc_pool.is_operating(t))
 
     # Reorder/select columns to comply with the results storage protocol
+    # Include diagnostic columns for convergence analysis
     required_cols = [
         'time', 'E', 'Tamb', 'TESmode', 'TES_layout', 'iter_status',
         'T_ptc_out', 'T_tes_top', 'T_tes_bottom', 'tes_soc_kWh', 'mdot_ptc_kg_s',
         'mdot_tes_charge_kg_s', 'mdot_tes_discharge_kg_s', 'mdot_process_kg_s',
         'to_tes_kJ', 'tes_to_proc_kJ', 'solar_to_proc_kJ', 'aux_to_proc_kJ',
         'aux_tes_energy_kJ',
-        'T_zinc', 'Q_zinc_hx_kW', 'zinc_operating'
+        'T_zinc', 'Q_zinc_hx_kW', 'zinc_operating',
+        'mode_initial', 'mode_final', 'attempt_count', 'attempted_modes',
+        'attempts_json', 'network_converged', 'tespy_error', 'dof_report',
     ]
     
     # Ensure all required columns are present in the final DF
@@ -176,6 +183,12 @@ def run_single_simulation(
             df[c] = np.nan
             
     final_df = df[required_cols].copy()
+
+    # Serialize list/dict diagnostic columns to JSON strings for CSV compat
+    for col in ['attempted_modes', 'attempts_json']:
+        if col in final_df.columns:
+            final_df[col] = final_df[col].apply(
+                lambda x: json.dumps(x) if isinstance(x, (list, dict)) else str(x) if x is not None else '')
 
     # Construct clean file name
     htf_clean = htf.replace('INCOMP::', '')
@@ -244,6 +257,8 @@ def main():
     parser.add_argument('--void_fraction', type=float, default=0.4, help="Packed bed void fraction (porosity).")
     parser.add_argument('--insulation_thickness', type=float, default=1.0, help="TES tank insulation thickness in m.")
     parser.add_argument('--T_init', type=float, default=None, help="TES uniform initial temperature override in °C.")
+    parser.add_argument('--run-id', type=str, default=None, help="Isolation key for design cache directory (auto-generated if omitted).")
+    parser.add_argument('--no-progress', action='store_true', help="Suppress tqdm progress bar (useful for logging to file).")
     
     args = parser.parse_args()
 
@@ -259,7 +274,9 @@ def main():
         particle_diameter=args.particle_diameter,
         void_fraction=args.void_fraction,
         insulation_thickness=args.insulation_thickness,
-        T_init=args.T_init
+        T_init=args.T_init,
+        run_id=args.run_id,
+        show_progress=not args.no_progress
     )
 
 

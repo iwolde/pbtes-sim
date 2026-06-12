@@ -26,7 +26,9 @@ class Solver:
                  tank_config='indirect',
                  file_path=None,
                  charge_margin=1.5,
-                 zinc_pool_params=None):
+                 zinc_pool_params=None,
+                 run_id=None,
+                 show_progress=True):
         self.tes_params= tes_params
         self.component_params = component_params
         self.conexion_params = conexion_params
@@ -34,6 +36,11 @@ class Solver:
         self.system_mode = system_mode
         self.topology = topology
         self.tank_config = tank_config  # 'direct' or 'indirect'
+        self.show_progress = show_progress
+        if run_id is not None:
+            self._cache_dir = f'.tespy_cache/{run_id}'
+        else:
+            self._cache_dir = f'.tespy_cache/{topology}_{tank_config}'
         self.results = []
         self.current_mode = '4' 
         self.file_path = file_path
@@ -48,15 +55,15 @@ class Solver:
         self.E_min_charge  = self.E_min_process * charge_margin
         self.charge_margin = charge_margin
         # Mode 1 fires when solar can serve process AND charge TES with meaningful surplus.
-        # PI (Parallel/indirect) needs ~10% margin above E_min_charge for reliable offdesign HX convergence.
-        # SD (Series/direct) topology has simpler/direct charging and converges easily, so no extra margin is needed.
+        # PI uses Mode 5/6 instead; SI is not in scope. Both are disabled.
         if self.topology == 'Parallel' and self.tank_config == 'indirect':
-            E_min_mode1_calc = (Q_proc + 48000.0) / (A_ptc * eta_opt)
-            self.E_min_mode1 = max(E_min_mode1_calc, 400.0)
+            self.E_min_mode1 = 1e9  # disabled for PI (uses Mode 5/6)
+        elif self.topology == 'Series' and self.tank_config == 'indirect':
+            self.E_min_mode1 = 1e9  # disabled for SI (not in scope)
         elif self.topology == 'Parallel':
-            self.E_min_mode1 = max(self.E_min_charge * 1.1, 600.0)
+            self.E_min_mode1 = max(self.E_min_charge * 1.1, 600.0)  # PD
         else:
-            self.E_min_mode1 = max(self.E_min_charge, 600.0)
+            self.E_min_mode1 = max(self.E_min_charge, 600.0)  # SD
         # ---
         
         # --- Zinc pool (optional dynamic process model) ---
@@ -139,7 +146,7 @@ class Solver:
             T_min_discharge = t_proc_set  # 480 C - SD: preheater tops up
         else:
             T_min_discharge = t_proc_set + 5.0  # 485 C - PI/indirect with Regime B support
-        T_max_discharge = 580              # Solar Salt limit - 20, expanded range
+        T_max_discharge = 600.0              # Solar Salt limit - 20, expanded range
         
         # Calculate State of Charge (SOC)
         if is_series_direct:
@@ -190,54 +197,89 @@ class Solver:
                 return self.prev_TESmode
 
         # --- Pegajosidad: permanecer en Mode 6 si TES aun necesita carga ---
-        # Mode 6 is Parallel-only (aux+process loop separate from PTC->TES loop)
+        # Mode 6 is Parallel-only (aux+process loop separate from PTC->TES loop).
+        # Priority: Mode 5 takes precedence over Mode 6 if both are viable
+        # (Mode 5 serves process with solar while charging; Mode 6 burns aux).
+        # 4-mode scheme (Mode 5/6 replacing Mode 1) applies only to PI with
+        # standard PTC model.  In-house PTC uses original 6-mode logic.
+        is_pi = (self.topology == 'Parallel' and self.tank_config == 'indirect')
+        use_4mode = is_pi and not self.use_inhouse_ptc
         if (self.prev_TESmode == '6' and soc_norm < 0.8
                 and irr > self.E_min_process and self.topology == 'Parallel'):
-            return '6'
+            # Only stick to Mode 6 if Mode 5 is NOT viable
+            mode5_viable = False
+            if irr > self.E_min_charge and use_4mode:
+                T_ptc_est = self._estimate_ptc_out(irr)
+                if (is_pi
+                        and TES_bot < T_ptc_est - 20.0
+                        and soc_norm < 0.90):
+                    mode5_viable = True
+            if not mode5_viable:
+                return '6'
+            # Otherwise fall through to Mode 5 below
     
         # --- TES muy frio y poca irradiancia -> standby ---
         if soc_norm < 0.05 and irr < self.E_min_process:
             return '4'
-    
-        # --- TES frio moderado: cargar TES si hay irradiancia suficiente ---
-        # Mode 6 is Parallel-only; for Series, fall through to Mode 1/2 logic
-        if soc_norm < 0.4 and TES_top < 470 and self.topology == 'Parallel':
-            return '6' if irr > self.E_min_charge else '4'
-    
+
         # --- Irradiancia suficiente para proceso + carga ---
         if irr > self.E_min_charge:
-            # Mode 5: high-T charge with PTC + auxiliary, Parallel-only
-            if TES_top > t_ph_out and soc_norm < 0.90 and self.topology == 'Parallel':
+            # Shared PTC outlet estimate (used by Mode 5, Mode 1 viability)
+            T_ptc_est = self._estimate_ptc_out(irr)
+
+            # 4-mode scheme (PI only, standard PTC model):
+            # Mode 5: High-T series charge (priority over Mode 6).
+            # Mode 6: Dedicated PTC->TES charging with aux process.
+            if use_4mode:
+                # Mode 5 fires when TES bottom is cold enough for meaningful
+                # heat transfer via the High-T Charge HX.
+                if (TES_bot < T_ptc_est - 20.0 and soc_norm < 0.90):
+                    return '5'
+                # Mode 6 fires whenever TES needs charge (SoC < 0.80).
+                if soc_norm < 0.80:
+                    return '6'
+                return '2'
+
+            # Original 6-mode logic (non-PI, or PI with in-house PTC):
+            # Mode 5: legacy T_top-based threshold
+            if (self.topology == 'Parallel' and self.tank_config == 'indirect'
+                    and TES_top > t_ph_out and soc_norm < 0.90):
                 return '5'
             # Mode 1: charge TES + serve process
-            # Estimate PTC outlet temp for charge viability check
-            T_in_nom = self.solar_system.conexion_params.get('6_T', 480.0)
-            T_out_design = 560.0
-            E_design = self.component_params.get('ptc_E', 900.0)
-            irr_frac = min(irr / E_design, 1.2)
-            T_ptc_est = T_in_nom + irr_frac * (T_out_design - T_in_nom)
-            if self.topology == 'Parallel' and self.tank_config == 'indirect':
+            # PI uses original thresholds; PD and Series use their own.
+            if not is_pi:
+                min_dt_mode1 = 65.0 if self.topology == 'Parallel' else 30.0
+                charge_viable = (T_ptc_est > TES_top + min_dt_mode1)
+                if self.tank_config == 'indirect':
+                    T_charge_in = t_proc_set  # Series: charge after process
+                    tes_cold_side = TES_profile[-1] if prev_TES_lay == 'Charge' else TES_profile[0]
+                    if T_charge_in - tes_cold_side < min_dt_mode1:
+                        charge_viable = False
+                if irr >= self.E_min_mode1 and charge_viable and soc_norm < 0.99:
+                    return '1'
+            else:
+                # PI with in-house PTC: Mode 1 with original thresholds
                 min_dt_mode1 = 35.0
-            elif self.topology == 'Parallel':
-                min_dt_mode1 = 65.0
-            else:
-                min_dt_mode1 = 30.0
-            charge_viable = (T_ptc_est > TES_top + min_dt_mode1)
-            if self.tank_config == 'indirect':
-                T_charge_in = t_ph_out if self.topology == 'Parallel' else t_proc_set
-                tes_cold_side = TES_profile[-1] if prev_TES_lay == 'Charge' else TES_profile[0]
-                if T_charge_in - tes_cold_side < min_dt_mode1:
-                    charge_viable = False
-            if irr >= self.E_min_mode1 and charge_viable and soc_norm < 0.99:
-                return '1'
-            else:
-                return '2'
+                charge_viable = (T_ptc_est > TES_top + min_dt_mode1)
+                if self.tank_config == 'indirect':
+                    T_charge_in = T_ptc_est if self.topology == 'Parallel' else t_proc_set
+                    tes_cold_side = TES_profile[-1] if prev_TES_lay == 'Charge' else TES_profile[0]
+                    if T_charge_in - tes_cold_side < min_dt_mode1:
+                        charge_viable = False
+                if irr >= self.E_min_mode1 and charge_viable and soc_norm < 0.99:
+                    return '1'
+            return '2'
+            return '2'
     
         # --- Irradiancia suficiente solo para proceso (sin excedente para carga) ---
         if irr > self.E_min_process:
             # Check discharge first: if TES has energy, use it + top up with PTC
             if TES_top > T_min_discharge and TES_top <= T_max_discharge and soc_norm > 0.02:
                 return '3'
+            # Cold TES + moderate DNI: dedicated charging (Mode 6, Parallel only)
+            # salvages otherwise-wasted solar for TES charging at low SoC.
+            if soc_norm < 0.40 and self.topology == 'Parallel':
+                return '6'
             return '2'
     
         # --- Baja irradiancia: descargar TES si tiene energia ---
@@ -245,6 +287,13 @@ class Solver:
             return '3'
         return '4'
     
+    def _estimate_ptc_out(self, irr):
+        """Estimate achievable PTC outlet temperature at given DNI."""
+        T_in_nom = self.solar_system.conexion_params.get('6_T', 480.0)
+        T_out_design = 560.0
+        E_design = self.component_params.get('ptc_E', 900.0)
+        irr_frac = min(irr / E_design, 1.2) if irr > 0 else 0.0
+        return T_in_nom + irr_frac * (T_out_design - T_in_nom)
 
     def get_system_mode(self, irr):
         if self.system_mode == 'Full':
@@ -273,6 +322,7 @@ class Solver:
                                     topology=self.topology,
                                     tank_config=self.tank_config
                                     )
+        self.solar_system._cache_dir = self._cache_dir
         print(f"Mode: {mode}")
         self.solve_network_steady(mode=mode)
         self.solar_system.network.print_results()
@@ -289,7 +339,7 @@ class Solver:
             except Exception:
                 pass
 
-        base_dir = '.tespy_cache'
+        base_dir = self._cache_dir
         if os.path.exists(base_dir):
             for f in glob.glob(os.path.join(base_dir, 'base_design_*')):
                 if os.path.isfile(f):
@@ -325,10 +375,12 @@ class Solver:
 
         def _make_system(T_init):
             self.tes_params['Initial temperature'] = T_init
-            return SolarThermalSystem(rows=1, tes_params=self.tes_params,
+            sys = SolarThermalSystem(rows=1, tes_params=self.tes_params,
                         component_params=self.component_params,
                         conexion_params=self.conexion_params,
                         HTF=self.HTF, topology=self.topology, tank_config=self.tank_config)
+            sys._cache_dir = self._cache_dir
+            return sys
         
         # ---- Mode 1 (charge + process, computes kA) ----
         self.system_mode = 'Full'; self.TES_lay = 'Charge'; self.irr = 1000
@@ -477,7 +529,7 @@ class Solver:
             # Warm-start from Mode 1 design (similar PTC→Charge HX topology)
             ok5, _, _ = self.attempt_to_solve(sys5, 'design', 'base_design', '5', tries=10)
             if ok5 and sys5.network.converged:
-                sys5.network.save(os.path.join('.tespy_cache', 'base_design_5'))
+                sys5.network.save(os.path.join(self._cache_dir, 'base_design_5'))
             self.solar_system = sys5
         
         # ---- Mode 6 (full TES charge cycle, Parallel: PTC→TES + aux→process) ----
@@ -701,7 +753,7 @@ class Solver:
             self.current_mode = '4'
             try:
                 system.set_operation_mode(TESmode='4', mode=mode, current_irr=self.current_irr, profile=system.tes.profile if hasattr(system, 'tes') else None)
-                system.solve_network(mode=mode, design_path='base_design_4', TESmode='4', use_init_path=True)
+                system.solve_network(mode=mode, design_path='base_design_4', TESmode='4', use_init_path=False)
                 if bool(getattr(system.network, 'converged', False)):
                     attempts.append({'mode': '4', 'try_idx': 'fallback', 'tespy_converged': True})
                     return True, attempts, last_err
@@ -829,7 +881,7 @@ class Solver:
                     TESmode = '4'
                     self.current_mode = TESmode
             else:
-                if hasattr(system, 'charge_tes_hx'):
+                if (hasattr(system, 'charge_tes_hx') or hasattr(system, 'high_t_charge_hx')):
                     T_in_bot = system.tes.profile[-1]
                     system.conn_13.set_attr(T=T_in_bot)
                 else:
@@ -1461,6 +1513,7 @@ class Solver:
                                     topology=self.topology,
                                     tank_config=self.tank_config
                                     )
+        self.solar_system._cache_dir = self._cache_dir
         if hasattr(self, 'charge_hx_kA') and self.charge_hx_kA is not None:
             self.solar_system.charge_hx_kA = self.charge_hx_kA
         if hasattr(self, 'discharge_hx_kA') and self.discharge_hx_kA is not None:
@@ -1491,7 +1544,8 @@ class Solver:
         if hasattr(self.solar_system, 'hot_tes') and self.solar_system.hot_tes is not None:
             self.solar_system.hot_tes.profile = np.ones(20) * T_init
         
-        for idx, row in tqdm(data_frame.iterrows(), total=len(data_frame), desc="Simulating"):
+        progress_kwargs = dict(desc="Simulating", disable=not self.show_progress)
+        for idx, row in tqdm(data_frame.iterrows(), total=len(data_frame), **progress_kwargs):
             
             self.current_timestamp = row[time_col]
             self.mode_alert = False
@@ -1535,6 +1589,7 @@ class Solver:
                                        Tamb=current_Tamb) 
             if self.mode_alert:
                 self.current_mode = '4'
+                design_path = f'base_design_{self.current_mode}'
                 self.solar_system.set_operation_mode(TESmode='4', 
                                                      current_irr=current_irr,
                                                      profile=self.solar_system.tes.profile,

@@ -19,17 +19,15 @@ To provide accurate, convergence-stable data (temperatures, metrics, economics) 
 | Parallel/Series | Support both Series and Parallel configurations cleanly with Pipe components | Good |
 | Zinc pool always ON | Dynamic demand is core novelty; fixed-demand mode retained for testing | Good |
 
-## Current Milestone: v1.2 Publication Pipeline
+## Current Milestone: v1.4 Production Runs & Exergoeconomics
 
 **Goal:** Complete convergence fixes (Phase C), then generate all publication results (Phase D).
 
 **Target features:**
-- Fix Mode 1 offdesign convergence for Solar Salt
-- Fix Mode 6 design ("too many parameters")
-- Converge all 6 modes for all 4 topologies
-- Run 365-day simulations for all configurations
+- PI: 4-mode scheme converged; SD: Modes 1-4 converged
+- Run 365-day simulations for PI and SD
 - Run parametric sweeps (aperture, TES volume, topology)
-- Generate 13+ publication figures
+- Generate 12+ publication figures
 - Compute LCOH and exergoeconomic analysis
 - Draft paper
 
@@ -65,14 +63,12 @@ See `.planning/REQUIREMENTS.md` and `TODO.md` for Phase C and D requirements.
 
 ## Context
 
-Shipped v1.1 Robust Physics and Testing Framework.
-The simulation engine is now backed by comprehensive pytest suites.
-Fundamental physics boundaries (Solar Salt limits) and explicit 1st and 2nd law energy balances are analytically verified.
-An exhaustive NxN dynamic mode transition test ensures that changing between any active state correctly routes mass flows.
-Codebase now in maintenance/improvement phase for convergence hardening.
+Shipped v1.4 with 4-mode PI scheme and SD support. 100% test pass rate (100+ tests, 1 xpassed).
+PI SF = 54.5% (on par with SD at 55.4%). Codebase in Phase D readiness for production runs.
+PD and SI configurations deferred to future work.
 
 ## Evolution
 
 This document evolves at phase transitions and milestone boundaries.
 
-- Last updated: 2026-05-21 after documentation coherence audit
+- Last updated: 2026-06-12 after PI/SD scope consolidation

@@ -14,7 +14,7 @@ network solving and a 1D Schumann model for the packed bed.
 - **Pump power**: Post-processed from quasi-steady results (Ergun equation).
   NOT computed inline in the solver.
 - **PBTES model**: Pre-validated from a prior publication. No re-validation needed.
-- **Topologies**: Compare Parallel vs Series, Direct vs Indirect (2x2 matrix).
+- **Topologies**: Compare PI (Parallel/Indirect) vs SD (Series/Direct).
 - **Plant**: Hypothetical reference design (not based on a real facility).
 - **Target journals**: Journal of Energy Storage, Energy, Solar Energy (Q1).
 
@@ -23,7 +23,8 @@ network solving and a 1D Schumann model for the packed bed.
 | Document | Purpose |
 |----------|---------|
 | `.planning/PLANT_LAYOUTS_AND_MODES.md` | **Ground truth** for operating modes, layouts, and component roles |
-| `.planning/MODE1_PI_DEBUGGING.md` | **Mode 1 Parallel/Indirect debugging guide** and failure analysis |
+| `.planning/MODE_SIMPLIFICATION_PROPOSAL.md` | 4-mode PI scheme rationale and verification results |
+| `.planning/PARAMETRIC_SWEEP_PLAN.md` | Complete parametric sweep strategy, figures, and publication narrative |
 | `insumos paper/PROJECT_CONTEXT.md` | Full project reference (parameters, workflow, results format) |
 | `insumos paper/PHYSICS_METHODOLOGY.md` | Mathematical models, layout sizing, and offdesign coupling physics |
 | `insumos paper/zinc_pool_model_methodology.md` | Zinc pool physics and coupling |
@@ -78,7 +79,7 @@ codigos/
 │   ├── run_assessment_07_synthesis.py
 │   └── run_transition_matrix.py
 │
-├── tests/                        ← pytest suite (10 test files)
+├── tests/                        ← pytest suite (11 test files)
 │   ├── conftest.py               ← shared fixtures
 │   ├── test_physics.py
 │   ├── test_modes.py
@@ -89,6 +90,7 @@ codigos/
 │   ├── test_zinc_pool.py
 │   ├── test_economics.py
 │   ├── test_exergoeconomics.py
+│   ├── test_ptc_inhouse.py
 │   └── test_winter_logic.py
 │
 ├── insumos paper/                ← paper context & methodology docs
@@ -127,7 +129,7 @@ Default `--days`: 7
 
 ### `run_parametric.py` — parametric sweep
 ```bash
-python run_parametric.py --sweep topology           # 4 topology combos (default)
+python run_parametric.py --sweep topology           # 2 topology combos (default)
 python run_parametric.py --sweep aperture           # aperture area sweep
 python run_parametric.py --sweep tes_volume         # tank DxH grid
 python run_parametric.py --sweep full               # all sweeps combined
@@ -274,12 +276,12 @@ The authoritative reference with full diagrams is
 
 | Mode | Name | Solar | TES Action | Aux | Topology |
 |------|------|:-----:|:----------:|:---:|:--------:|
-| **1** | Solar charges TES + serves process | Yes | Charge | No | Both |
+| **1** | Solar charges TES + serves process | Yes | Charge | No | SD |
 | **2** | Solar to process only (TES standby) | Yes | Standby | No | Both |
 | **3** | TES discharge to process only | No | Discharge | No | Both |
 | **4** | Standby (auxiliary only) | No | Standby | Yes | Both |
-| **5** | High-T solar charges TES + process | Yes | Charge | Yes | **Parallel only** |
-| **6** | Solar charges TES + process decoupled | Yes | Charge | Yes* | **Parallel only** |
+| **5** | High-T solar charges TES + process | Yes | Charge | Yes | **PI only** |
+| **6** | Solar charges TES + process decoupled | Yes | Charge | Yes* | **PI only** |
 
 \*Mode 6: process runs on independent auxiliary cycle while PTC charges TES.
 
@@ -289,7 +291,7 @@ The authoritative reference with full diagrams is
 - **E_min_charge** = 1.5 x E_min_process ~ 74 W/m2
 - **SoC_mode6_sticky** = 0.80, **SoC_mode4_threshold** = 0.05
 - **Discharge viability**: T_top in 500-580C range
-- Modes 5 and 6 are **Parallel topology only**
+- Modes 5 and 6 are **PI topology only**
 
 ## 11. Energy Conventions
 

@@ -1,7 +1,7 @@
 # Plant Layouts, Configurations & Operating Modes
 
 *Complete technical reference for the PBTES solar thermal plant.*
-*Updated: 2026-05-20 — v3.0: Redesigned direct configuration with 2-tank parallel discharge mixing*
+*Updated: 2026-06-12 — v3.2: PI and SD as primary configurations. PD and SI deferred.*
 
 ---
 
@@ -67,52 +67,56 @@ During **discharging**, both tanks release hot fluid from their tops **in parall
 > [!NOTE]
 > In TESPy, the direct configuration models the TES path using `SimpleHeatExchanger` components labeled as "pipes" (`Charge_TES_Pipe`, `Discharge_TES_Pipe`). These are **modeling references only** — they represent the temperature change as HTF passes through the packed bed. The actual physics is solved by the external 1D Schumann model.
 
-### 2.3 The Four Configurations
+### 2.3 The Two Configurations
+
+The paper compares two configurations. PD (Parallel/Direct) and SI (Series/Indirect) are deferred to future work.
 
 | # | Topology | Tank Config | Description |
 |---|----------|-------------|-------------|
-| 1 | **Parallel** | **Indirect** | Baseline. Split flow + HX coupling to TES secondary loop |
-| 2 | **Parallel** | **Direct** | Split flow; Hot Tank on TES branch, Cold Tank on process return; parallel discharge with mixing |
-| 3 | **Series** | **Indirect** | Sequential flow + HX coupling to TES secondary loop |
-| 4 | **Series** | **Direct** | Sequential flow; Hot Tank upstream, Cold Tank downstream of process; parallel discharge with mixing |
+| 1 | **Parallel** | **Indirect** | Baseline. Split flow + HX coupling to TES secondary loop. 4-mode PI scheme. |
+| 2 | **Series** | **Direct** | Sequential flow; Hot Tank upstream, Cold Tank downstream of process; parallel discharge with mixing. Modes 1-4. |
 
 ---
 
 ## 3. Operating Modes
 
-The solver selects one of 6 operating modes each timestep based on irradiance (E), TES state of charge (SoC), and temperatures.
+The solver selects operating modes each timestep based on irradiance (E), TES state of charge (SoC), and temperatures.
+
+**Parallel/Indirect (PI) uses a 4-mode scheme** where Mode 1 is deprecated (replaced by Mode 5 for warm/hot TES and Mode 6 for cold TES). Series/Direct (SD) uses Modes 1-4. Parallel/Direct and Series/Indirect are deferred to future work.
 
 | Mode | Name | Solar | TES Action | Aux | Topology | When Selected |
 |------|------|:-----:|:----------:|:---:|:--------:|---------------|
-| **1** | Solar charges TES + process | ✓ | Charge ← | — | Both | E > E_charge, SoC < 0.99, T_ptc > T_tes_top |
-| **2** | Solar to process only | ✓ | Standby | — | Both | E > E_process, TES full or charge not viable |
-| **3** | TES discharge to process | — | Discharge → | — | Both | E < E_process, SoC > 0.10, T_top in valid range |
-| **4** | Standby (auxiliary only) | — | Standby | ✓ | Both | No sun, SoC exhausted |
-| **5** | High-T solar charges TES | ✓ | Charge ← | ✓ | **Parallel only** | E > E_charge, T_top > 520°C, SoC < 0.90 |
-| **6** | Solar charges TES + process (split) | ✓ | Charge ← | ✓* | **Parallel only** | E > E_process, SoC < 0.40, T_top < 470°C |
+| **1** | Solar charges TES + process | ✓ | Charge ← | — | SD | E > E_charge, SoC < 0.99, T_ptc > T_tes_top |
+| **2** | Solar to process only | ✓ | Standby | — | All | E > E_process, TES full or charge not viable |
+| **3** | TES discharge to process | — | Discharge → | — | All | E < E_process, SoC > 0.02, T_top in valid range |
+| **4** | Standby (auxiliary only) | — | Standby | ✓ | All | No sun, SoC exhausted |
+| **5** | High-T solar charges TES + process | ✓ | Charge ← | Yes\* | **PI only** | PI: E > E_charge, T_bot < T_ptc_est−20°C, SoC < 0.90 |
+| **6** | Dedicated PTC→TES + aux process | ✓ | Charge ← | ✓\*\* | **PI only** | PI: E > E_charge, SoC < 0.80 |
 
-*Mode 6 Parallel: process runs on an independent auxiliary-heated cycle.
+\*Mode 5: Preheater supplements process heat if PTC+HX cannot maintain 520°C.
+\*\*Mode 6: Process runs on independent auxiliary-heated cycle.
 
 ### Mode Descriptions
 
-**Mode 1 — Solar Charges TES + Serves Process**: The PTC heats the HTF. In Parallel, the flow splits: one branch serves the process, the other charges the TES. In Series, the HTF flows sequentially through process then TES. The Preheater is bypassed (Q=0).
+**Mode 1 — Solar Charges TES + Serves Process** (SD only): The HTF flows sequentially in series. PTC → Hot Tank → Preheater (Q=0) → Process HX → Cold Tank → PTC. No splitter/merge needed. The Hot Tank receives PTC output at ~560°C, the Cold Tank receives process return at ~480°C. **Deprecated for PI** — use Mode 5 (warm/hot TES) or Mode 6 (cold TES) instead.
 
-**Mode 2 — Solar to Process Only**: Simple loop. PTC heats HTF, which delivers heat to the process. TES is in standby (no charging or discharging). Identical network for all configurations.
+**Mode 2 — Solar to Process Only**: Simple loop. PTC heats HTF, which delivers heat to the process. TES is in standby. Identical for all configurations.
 
-**Mode 3 — TES Discharge to Process**: No solar input. In indirect configs, hot HTF from the TES secondary loop heats the process via the Discharge HX. In direct configs, both tanks discharge **in parallel** through a mixing valve that controls the blended temperature to ≥520°C. The PTC is completely offline.
+**Mode 3 — TES Discharge to Process**: No solar input. In indirect configs, hot HTF from the TES secondary loop heats the process via the Discharge HX. In direct configs, both tanks discharge in parallel through a mixing valve. PTC offline.
 
-**Mode 4 — Standby / Auxiliary**: No solar, TES exhausted. The Preheater HX acts as the auxiliary heater (gas-fired or electric), supplying all process heat. Minimal loop with only the process components.
+**Mode 4 — Standby / Auxiliary**: No solar, TES exhausted. Preheater HX acts as auxiliary heater, supplying all process heat. Minimal loop.
 
-**Mode 5 — High-Temperature Solar Charging (Parallel only)**: In indirect configs, uses a dedicated **High-Temperature Charge HX** installed in parallel with the regular Charge HX. The PTC output first passes through the High-T HX (transferring heat to the TES secondary at the highest temperature), then continues to the Preheater and Process HX. In other modes, HTF bypasses the High-T HX through a parallel pipe. In direct configs, the PTC output flows directly into the **Hot Tank** (no HX needed), then continues to the Preheater and Process. The Preheater acts as auxiliary to supplement process heat if needed.
+**Mode 5 — High-Temperature Solar Charging (PI only)**: Uses the **High-Temperature Charge HX**. Flow: PTC → High-T HX → Preheater → Process HX → return. The HX transfers heat to the TES secondary loop. PTC outlet is DNI-aware (480–560°C). Preheater Q=0 at design; in offdesign, PTC outlet anchored at DNI-estimate. Fires when TES bottom is cold enough (T_bot < T_ptc_est − 20°C).
 
-**Mode 6 — Solar Charges TES + Process (Decoupled, Parallel only)**: Two completely independent cycles operate simultaneously. Cycle A: PTC → Charge HX → PTC (dedicated to TES charging). Cycle B: Preheater (auxiliary) → Process HX → Preheater (dedicated to process). Each cycle has its own pump.
+**Mode 6 — Dedicated PTC→TES Charging (PI only)**: Two independent cycles. Cycle A: PTC → Charge HX → PTC (dedicated to TES). Cycle B: Preheater (aux) → Process HX → Preheater (dedicated to process). Fires when SoC < 0.80 and Mode 5 is not viable. Used as backup when TES bottom is too warm for Mode 5's HX approach.
 
 ### Mode Selection Thresholds
 
-- **E_min_process** = Q_proc / (A_ptc × η_opt) ≈ 49 W/m² — minimum DNI to supply process heat
-- **E_min_charge** = 1.5 × E_min_process ≈ 74 W/m² — minimum DNI for charging
-- **SoC stickiness**: Mode 6 stays active while SoC < 0.80 and E > E_process
-- **Discharge viability**: T_top must be between 500°C and 580°C
+- **E_min_process** = Q_proc / (A_ptc × η_opt) — minimum DNI to serve process (~368 W/m² at A=1500)
+- **E_min_charge** = 1.5 × E_min_process — minimum DNI for charging (~551 W/m² at A=1500)
+- **PI Mode 5 threshold**: T_bot < T_ptc_est − 20°C (bottom-cold check for HX ΔT viability)
+- **PI Mode 6 threshold**: SoC < 0.80 (universal, replaces Mode 1's cold-charge niche)
+- **Discharge viability**: T_top between T_min_discharge and 600°C
 
 ---
 
@@ -164,77 +168,7 @@ graph TD
 > [!NOTE]
 > The charge and discharge secondary loops share the same physical pump and PBTES, but are shown separately for clarity. They **never operate simultaneously** — charging modes (1, 5, 6) and discharge mode (3) are mutually exclusive.
 
----
-
-### 4.2 Parallel / Direct — Full Layout
-
-The primary loop splits after the PTC: one branch charges the **Hot Tank** at PTC outlet temperature (~560°C), the other serves the process and then charges the **Cold Tank** with the process return (~480°C). No coupling HX, no secondary loop. During discharge, both tanks feed a **mixing valve** in parallel.
-
-```mermaid
-graph TD
-    subgraph "Charging Path (Mode 1)"
-        P1["⚙ Pump"] --> PTC["☀ PTC Field"]
-        PTC --> SP["Splitter"]
-        SP -->|"TES branch<br/>~560°C"| HT["Hot Tank<br/>(charges at PTC temp)"]
-        HT --> MG["Merge"]
-        SP -->|"Process branch"| PH["Preheater HX<br/>Q=0"]
-        PH -->|"T=520°C"| PR["Process HX<br/>Q=450 kW"]
-        PR -->|"T=480°C"| CT["Cold Tank<br/>(charges at return temp)"]
-        CT --> MG
-        MG --> P1
-    end
-
-    subgraph "Discharge Path (Mode 3)"
-        HT2["Hot Tank"] -->|"T_hot"| MV["Mixing Valve<br/>ṁ ratio control"]
-        CT2["Cold Tank"] -->|"T_cold"| MV
-        MV -->|"T_mix ≥ 520°C"| PH2["Preheater HX"]
-        PH2 --> PR2["Process HX"]
-        PR2 -->|"T≈480°C return<br/>splits to both tanks"| P1D["⚙ Pump"]
-    end
-```
-
-> [!IMPORTANT]
-> During **charging**: the Hot Tank receives high-grade PTC output (~560°C) on the TES branch, while the Cold Tank receives the process return (~480°C) on the process branch. During **discharging**: both tanks discharge in parallel through a mixing valve. The process return (~480°C) splits proportionally back to both tank bottoms, pushing the thermoclines upward. The Preheater supplements only if T_mix < 520°C.
-
----
-
-### 4.3 Series / Indirect — Full Layout
-
-All components are in a **single series loop**. During charging, the HTF first serves the process, then the cooler return charges the TES via a coupling HX. No Splitter/Merge needed.
-
-```mermaid
-graph TD
-    subgraph "Primary Loop (Charge Path)"
-        P1["⚙ Pump 1"] --> PTC["☀ PTC Field"]
-        PTC --> PH["Preheater HX<br/>(Auxiliary)"]
-        PH -->|"T=520°C"| PR["Process HX<br/>Q=450 kW"]
-        PR -->|"T=480°C"| CHX_H["Charge HX<br/>(hot side)"]
-        CHX_H --> P1
-    end
-
-    subgraph "TES Secondary Loop (Charge)"
-        P2["⚙ Pump 2"] --> PBTES["🔥 PBTES<br/>Packed Bed"]
-        PBTES --> CHX_C["Charge HX<br/>(cold side)"]
-        CHX_C --> P2
-    end
-
-    subgraph "TES Discharge Secondary Loop"
-        P2D["⚙ Pump 2"] --> PBTES2["🔥 PBTES"]
-        PBTES2 --> DHX_H["Discharge HX<br/>(hot side)"]
-        DHX_H --> P2D
-    end
-
-    subgraph "Process Discharge Loop"
-        DHX_C["Discharge HX<br/>(cold side)"] --> PH2["Preheater HX"]
-        PH2 --> PR2["Process HX"]
-        PR2 --> P1D["⚙ Pump 1"]
-        P1D --> DHX_C
-    end
-```
-
----
-
-### 4.4 Series / Direct — Full Layout
+### 4.2 Series / Direct — Full Layout
 
 All components in a single series loop. The primary Solar Salt flows directly **through** the packed beds (Hot Tank and Cold Tank) without any intermediate heat exchangers. In this direct configuration, the beds are modeled inside TESPy as `SimpleHeatExchanger` components (acting as "pipes").
 
@@ -283,77 +217,7 @@ Below are the **active flow paths** for each mode. Only the components and conne
 
 ### 5.1 Mode 1 — Solar Charges TES + Serves Process
 
-**When**: High irradiance, TES not full, PTC outlet hotter than TES top.
-
-#### Mode 1 — Parallel / Indirect
-
-The PTC output is split: one branch goes to process, the other charges the TES via the Charge HX. Two pumps: primary loop + TES secondary loop.
-
-```mermaid
-graph LR
-    P1["⚙ Pump 1"] --> PTC["☀ PTC Field"]
-    PTC --> SP["Splitter"]
-    SP -->|"Process"| PH["Preheater HX<br/>Q=0"]
-    PH -->|"T=520°C"| PR["Process HX<br/>Q=450 kW"]
-    PR -->|"T=480°C"| MG["Merge"]
-    SP -->|"TES charge"| CHX_H["Charge HX<br/>(hot side)"]
-    CHX_H --> MG
-    MG --> P1
-
-    P2["⚙ Pump 2"] --> PBTES["🔥 PBTES<br/>CHARGING"]
-    PBTES --> CHX_C["Charge HX<br/>(cold side)"]
-    CHX_C --> P2
-
-    style PTC fill:#ff9,stroke:#c90
-    style PBTES fill:#f96,stroke:#c30
-```
-
-#### Mode 1 — Parallel / Direct
-
-Split flow: one branch charges the **Hot Tank** at PTC outlet temperature (~560°C), the other serves the process and charges the **Cold Tank** with the process return (~480°C). Single pump.
-
-```mermaid
-graph LR
-    P1["⚙ Pump"] --> PTC["☀ PTC Field"]
-    PTC --> SP["Splitter"]
-    SP -->|"TES charge<br/>~560°C"| HT["Hot Tank<br/>CHARGING"]
-    HT --> MG["Merge"]
-    SP -->|"Process"| PH["Preheater HX<br/>Q=0"]
-    PH -->|"T=520°C"| PR["Process HX<br/>Q=450 kW"]
-    PR -->|"T=480°C"| CT["Cold Tank<br/>CHARGING"]
-    CT --> MG
-    MG --> P1
-
-    style PTC fill:#ff9,stroke:#c90
-    style HT fill:#f96,stroke:#c30
-    style CT fill:#69f,stroke:#36c
-```
-
-> [!TIP]
-> In Parallel/Direct Mode 1, the Hot Tank receives the **full PTC outlet temperature** (~560°C) on its branch, while the Cold Tank receives the **process return** (~480°C) on the other branch. Both tanks charge simultaneously at their respective temperature levels.
-
-#### Mode 1 — Series / Indirect
-
-The HTF flows in series: PTC → Preheater → Process → Charge HX → back. The TES receives the **post-process fluid at ~480°C** (cooler than Parallel). Two pumps.
-
-```mermaid
-graph LR
-    P1["⚙ Pump 1"] --> PTC["☀ PTC Field"]
-    PTC --> PH["Preheater HX<br/>Q=0"]
-    PH -->|"T=520°C"| PR["Process HX<br/>Q=450 kW"]
-    PR -->|"T=480°C"| CHX_H["Charge HX<br/>(hot side)"]
-    CHX_H --> P1
-
-    P2["⚙ Pump 2"] --> PBTES["🔥 PBTES<br/>CHARGING"]
-    PBTES --> CHX_C["Charge HX<br/>(cold side)"]
-    CHX_C --> P2
-
-    style PTC fill:#ff9,stroke:#c90
-    style PBTES fill:#f96,stroke:#c30
-```
-
-> [!NOTE]
-> In Series Mode 1, the TES receives **cooler fluid** (post-process at ~480°C) compared to Parallel Mode 1 where it receives fluid directly from the PTC (~560°C). This is the fundamental thermodynamic trade-off between topologies.
+**When**: High irradiance, TES not full, PTC outlet hotter than TES top. SD only.
 
 #### Mode 1 — Series / Direct
 
@@ -390,7 +254,7 @@ graph LR
 
 **When**: Sufficient irradiance for process, but TES is full or charging is not viable.
 
-Simple loop: PTC → Preheater → Process HX → back. No TES interaction. **Identical for all four configurations.** Single pump.
+Simple loop: PTC → Preheater → Process HX → back. No TES interaction. **Identical for both configurations.** Single pump.
 
 ```mermaid
 graph LR
@@ -495,9 +359,9 @@ graph LR
 
 ---
 
-### 5.5 Mode 5 — High-Temperature Solar Charging (Parallel Only)
+### 5.5 Mode 5 — High-Temperature Solar Charging (PI Only)
 
-**When**: High irradiance, T_tes_top > 520°C, SoC < 0.90. **Parallel topology only.**
+**When**: High irradiance, SoC < 0.90, TES_bot < T_ptc_est − 20°C. **PI only.**
 
 This mode uses a dedicated **High-Temperature Charge HX** that is physically separate from the regular Charge HX used in Mode 1. They are installed **in parallel** in the plant. In other modes, the HTF bypasses the High-T HX through a parallel pipe.
 
@@ -524,30 +388,11 @@ graph LR
     style HT_H fill:#fca,stroke:#f60
 ```
 
-#### Mode 5 — Parallel / Direct
-
-Single pump. PTC output flows directly into the **Hot Tank** (no HX needed), then continues to Preheater and Process. The Cold Tank is bypassed in this mode.
-
-```mermaid
-graph LR
-    P1["⚙ Pump"] --> PTC["☀ PTC Field"]
-    PTC -->|"~560°C"| HT["Hot Tank<br/>CHARGING<br/>(high-T)"]
-    HT --> PH["Preheater HX"]
-    PH -->|"T=520°C"| PR["Process HX<br/>Q=450 kW"]
-    PR -->|"T=480°C"| P1
-
-    style PTC fill:#ff9,stroke:#c90
-    style HT fill:#f96,stroke:#c30
-```
-
-> [!NOTE]
-> In direct Mode 5, the PTC output goes directly to the Hot Tank (no High-T Charge HX needed since there is no secondary loop). This is equivalent to Mode 1 Series/Direct without the Cold Tank. The Cold Tank is bypassed because Mode 5 focuses on high-temperature charging of the Hot Tank only.
-
 ---
 
-### 5.6 Mode 6 — Solar Charges TES + Process (Decoupled, Parallel Only)
+### 5.6 Mode 6 — Solar Charges TES + Process (Decoupled, PI Only)
 
-**When**: Moderate irradiance, TES is cold (SoC < 0.40, T_top < 470°C). This mode is "sticky" — it persists until SoC reaches 0.80. **Parallel topology only.**
+**When**: Moderate irradiance, TES is cold (SoC < 0.40, T_top < 470°C). This mode is "sticky" — it persists until SoC reaches 0.80.
 
 Two **completely independent cycles** operate simultaneously, each with its own pump:
 - **Cycle A** (Solar → TES): PTC output goes entirely to charging the TES
@@ -582,36 +427,8 @@ graph LR
     style PH fill:#f66,stroke:#c00
 ```
 
-#### Mode 6 — Parallel / Direct
-
-Two pumps (one per cycle). Cycle A charges the **Hot Tank** with PTC output. Cycle B runs the process on auxiliary and charges the **Cold Tank** with the process return.
-
-```mermaid
-graph LR
-    subgraph "Cycle A — Solar → Hot Tank Charging"
-        P1A["⚙ Pump A"] --> PTC["☀ PTC Field"]
-        PTC -->|"~560°C"| HT["Hot Tank<br/>CHARGING"]
-        HT --> P1A
-    end
-
-    subgraph "Cycle B — Process + Cold Tank Charging"
-        P1B["⚙ Pump B"] --> PH["Preheater HX<br/>(Auxiliary)"]
-        PH -->|"T=520°C"| PR["Process HX<br/>Q=450 kW"]
-        PR -->|"T=480°C"| CT["Cold Tank<br/>CHARGING"]
-        CT --> P1B
-    end
-
-    style PTC fill:#ff9,stroke:#c90
-    style HT fill:#f96,stroke:#c30
-    style CT fill:#69f,stroke:#36c
-    style PH fill:#f66,stroke:#c00
-```
-
-> [!TIP]
-> In direct Mode 6, both tanks charge simultaneously from separate thermal sources: the Hot Tank from the PTC (high-grade, ~560°C) and the Cold Tank from the process return (lower-grade, ~480°C). This maximizes energy capture into both tanks while keeping the cycles completely independent.
-
-> [!WARNING]
-> **Mode 6 Parallel design currently fails** in TESPy with "too many parameters: 13 required, 14 supplied". This is a known Phase C issue. At runtime, Mode 6 falls back to Mode 4 when this occurs.
+> [!NOTE]
+> **PI 4-mode scheme (v3.1)**: For Parallel/Indirect, Mode 1 is deprecated. Mode 5 (High-T series charge) handles warm/hot TES charging; Mode 6 (dedicated PTC→TES) handles cold-TES charging. Mode 5 fires when `TES_bot < T_ptc_est − 20°C, SoC < 0.90`. Mode 6 fires when `SoC < 0.80` and Mode 5 is NOT viable. PI achieved SF=54.5% in full-year simulation, on par with SD.
 
 ---
 
@@ -695,7 +512,7 @@ where:
 
 ## 7. Summary Matrix: Which Components are Active per Mode
 
-| Component | M1 | M2 | M3 | M4 | M5 | M6-Par |
+| Component | M1 | M2 | M3 | M4 | M5 | M6-PI |
 |-----------|:--:|:--:|:--:|:--:|:--:|:------:|
 | PTC Field | ✓ | ✓ | — | — | ✓ | ✓ |
 | Preheater HX | Q=0 | Q=0 | ✓ | ✓ (aux) | ✓ | ✓ (aux) |
@@ -719,14 +536,14 @@ where:
 
 ## 8. Pump Summary per Mode and Configuration
 
-| Mode | Parallel/Indirect | Parallel/Direct | Series/Indirect | Series/Direct |
-|------|:-----------------:|:---------------:|:---------------:|:-------------:|
-| 1 | 2 pumps (primary + secondary) | 1 pump | 2 pumps (primary + secondary) | 1 pump |
-| 2 | 1 pump | 1 pump | 1 pump | 1 pump |
-| 3 | 2 pumps (process + secondary) | 1 pump | 2 pumps (process + secondary) | 1 pump |
-| 4 | 1 pump | 1 pump | 1 pump | 1 pump |
-| 5 | 2 pumps (primary + secondary) | 1 pump | N/A | N/A |
-| 6 | 3 pumps (solar cycle + process cycle + secondary) | 2 pumps (solar cycle + process cycle) | N/A | N/A |
+| Mode | PI | SD |
+|------|:--:|:--:|
+| 1 | — | 1 pump |
+| 2 | 1 pump | 1 pump |
+| 3 | 2 pumps (process + secondary) | 1 pump |
+| 4 | 1 pump | 1 pump |
+| 5 | 2 pumps (primary + secondary) | N/A |
+| 6 | 3 pumps (solar cycle + process cycle + secondary) | N/A |
 
 ---
 

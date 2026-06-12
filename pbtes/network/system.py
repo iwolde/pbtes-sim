@@ -77,6 +77,16 @@ class SolarThermalSystem:
         # 2) Create a new TESPy Network
         self.network = tpn.Network(fluids=[self.HTF], T_unit='C', p_unit='bar', h_unit='kJ / kg')
         self.network.set_attr(T_range=[300, 700], m_range=[0.01, 100000.0])
+        
+        # Clear stale component references from previous modes
+        for attr in ('ptc_field', 'charge_tes_hx', 'high_t_charge_hx',
+                     'discharge_tes_hx', 'hot_tank_hx', 'cold_tank_hx',
+                     'splitter1', 'merge2', 'tes_ch_source', 'tes_ch_sink',
+                     'tes_dch_source', 'tes_dch_sink'):
+            try:
+                delattr(self, attr)
+            except AttributeError:
+                pass
 
         # 3) Create and add components
         self.process_hx = tpc.SimpleHeatExchanger(label='Process_HX')
@@ -376,8 +386,17 @@ class SolarThermalSystem:
         # preheater_hx.Q=0 (T05=T10) and ttd_l=20K.
         is_sd_m1 = (mode == 1 and getattr(self, 'tank_config', 'indirect') == 'direct'
                     and getattr(self, 'topology', 'Parallel') == 'Series')
-        if hasattr(self, 'conn_05') and self.conn_05 is not None and mode != 5 and not is_sd_m1:
-            self.conn_05.set_attr(T=self.conexion_params['5_T'])
+        # Parallel Mode 1 offdesign: Release conn_05.T to decouple PTC outlet
+        # temperature from the process-inlet requirement. Without this, T_ptc_out
+        # is forced to 520 C (preheater Q=0 + splitter dT=0), preventing the
+        # TES charge branch from receiving fluid hot enough to charge effectively.
+        # Design mode keeps 520 C for proper HX sizing.
+        is_parallel_m1 = (mode == 1
+                          and getattr(self, 'topology', 'Parallel') == 'Parallel')
+        if (hasattr(self, 'conn_05') and self.conn_05 is not None
+                and mode != 5 and not is_sd_m1):
+            if not (design_mode == 'offdesign' and is_parallel_m1):
+                self.conn_05.set_attr(T=self.conexion_params['5_T'])
         if hasattr(self, 'conn_06') and self.conn_06 is not None and not is_m6_par and not is_sd_m1:
             self.conn_06.set_attr(T=self.conexion_params['6_T'])
         if not is_m6_par:
@@ -559,7 +578,19 @@ class SolarThermalSystem:
                     self.conn_02.set_attr(T=T_ptc_design, m=m_ptc_design)
             else:
                 if not is_series_direct:
-                    # Non-SD configs: PTC output adjusts mass flow, Q=PR_Q pins process
+                    # Non-SD configs: PTC output adjusts mass flow, Q=PR_Q pins process.
+                    # Parallel Mode 1: Anchor PTC outlet at the estimated achievable
+                    # temperature (DNI-based). This replaces the conn_05.T constraint
+                    # removed in create_network, allowing the TES charge branch to
+                    # receive hotter fluid while the process HX extracts its fixed
+                    # -450 kW from the hotter inlet.
+                    if getattr(self, 'topology', 'Parallel') == 'Parallel':
+                        T_in_nom = self.conexion_params.get('6_T', 480.0)
+                        T_out_design = 560.0
+                        E_design = self.component_params.get('ptc_E', 900.0)
+                        irr_frac = min(current_irr / E_design, 1.2)
+                        T_ptc_target = T_in_nom + irr_frac * (T_out_design - T_in_nom)
+                        self.conn_02.set_attr(T=round(T_ptc_target, 1))
                     if not use_inhouse:
                         self.ptc_field.set_attr(
                             E=current_irr, A=self.component_params['ptc_A'],
@@ -711,6 +742,13 @@ class SolarThermalSystem:
                     self.conn_02.set_attr(T=T_ptc_design, m=m_ptc_design)
             
             if mode == 'offdesign':
+                # DNI-aware PTC outlet anchor avoids convergence issues
+                # from the coupled fixed-aperture PTC + fixed-kA HX solve.
+                # The PTC outlet is pinned at a temperature achievable at
+                # the current irradiance; HX and process HX balance from there.
+                T_in_nom = self.conexion_params.get('6_T', 480.0)
+                T_ptc = T_in_nom + min(current_irr / 900.0, 1.2) * (560.0 - T_in_nom)
+                self.conn_02.set_attr(T=round(T_ptc, 1))
                 if not use_inhouse:
                     self.ptc_field.set_attr(
                         E=current_irr, A=self.component_params['ptc_A'],
@@ -722,8 +760,6 @@ class SolarThermalSystem:
                         c_2=self.component_params.get('ptc_c_2', 0),
                         iam_1=self.component_params.get('ptc_iam_1', 0),
                         iam_2=self.component_params.get('ptc_iam_2', 0))
-                self.preheater_hx.set_attr(Q='var')
-                self.conn_05.set_attr(T=self.conexion_params['5_T'])
 
 
         elif TESmode == '6':
@@ -1029,7 +1065,7 @@ class SolarThermalSystem:
         """
 
         import os, shutil, time
-        base_dir = '.tespy_cache'
+        base_dir = getattr(self, '_cache_dir', '.tespy_cache')
         os.makedirs(base_dir, exist_ok=True)
         name = os.path.join(base_dir, f'base_design_{TESmode}')        
         if mode == 'design':

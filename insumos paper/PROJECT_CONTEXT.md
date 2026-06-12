@@ -1,6 +1,6 @@
 # PBTES Simulation Project — Complete Context
 *Single authoritative reference for humans and AI agents.*
-*Updated: 2026-06-04 | HTF: Solar Salt + Air | Zinc pool: dynamic (always ON)*
+*Updated: 2026-06-12 | HTF: Solar Salt + Air | Zinc pool: dynamic (always ON) | Configs: PI + SD*
 
 ---
 
@@ -20,7 +20,7 @@ solar multiple and TES volume, with full economic analysis (LCOH).
 
 ### Scientific novelty
 - First system-level simulation coupling PBTES with a dynamic galvanizing process model
-- Comparison of Parallel vs Series and Direct vs Indirect configurations
+- Comparison of PI (Parallel/Indirect) vs SD (Series/Direct) configurations
 - Solar Salt as HTF (vs Air comparison)
 - Pre-validated PBTES model (from a prior publication — no re-validation needed)
 
@@ -56,13 +56,15 @@ solar multiple and TES volume, with full economic analysis (LCOH).
 - Steel throughput: 5,000 kg/h at 25°C → 450°C
 - **Always ON** in every simulation — there is no option to disable it
 
-### 2.5 Four Topologies (2×2 matrix)
-| | **Indirect** (HX between PTC and TES) | **Direct** (PTC fluid enters TES) |
-|---|---|---|
-| **Parallel** | HTF splits to process and TES simultaneously | Same but direct contact |
-| **Series** | TES always in series with process HX | Same but direct contact (upstream Hot Tank, downstream Cold Tank) |
+### 2.5 Two Configurations
 
-All four must be simulated for the paper. Baseline is Parallel/indirect.
+The plant is evaluated in two configurations:
+| **Parallel/Indirect (PI)** | **Series/Direct (SD)** |
+|---|---|
+| HTF splits to process and TES simultaneously | HTF flows sequentially: PTC → Hot Tank → Process → Cold Tank |
+| TES has secondary loop with coupling HX | Primary fluid flows directly through packed bed |
+
+Baseline is PI.
 
 #### Direct Configuration Key Implementation Details
 1. **Direct-Contact Modeling**: In the direct configuration, primary Solar Salt flows directly through the packed bed rock tanks (Hot Tank and Cold Tank) without any intermediate heat exchangers. These are modeled inside the TESPy network as `SimpleHeatExchanger` (pipe) components.
@@ -81,16 +83,17 @@ All four must be simulated for the paper. Baseline is Parallel/indirect.
 ## 3. Operating Modes
 
 The solver selects one of 6 operating modes each timestep based on irradiance, SoC, and temperatures.
+PI uses a 4-mode scheme (Mode 1 deprecated, replaced by Modes 5/6). SD uses Modes 1-4.
 See `.planning/PLANT_LAYOUTS_AND_MODES.md` for the authoritative reference with full diagrams.
 
 | Mode | Name | Solar | TES Action | Aux | Topology | When Selected |
 |------|------|:-----:|:----------:|:---:|:--------:|---------------|
-| **1** | Solar charges TES + process | ✓ | Charge ← | — | Both | E > E_charge, SoC < 0.99, T_ptc > T_tes_top |
+| **1** | Solar charges TES + process | ✓ | Charge ← | — | SD | E > E_charge, SoC < 0.99, T_ptc > T_tes_top |
 | **2** | Solar to process only | ✓ | Standby | — | Both | E > E_process, TES full or charge not viable |
 | **3** | TES discharge to process | — | Discharge → | — | Both | E < E_process, SoC > 0.10, T_top in 500–580°C |
 | **4** | Standby (auxiliary only) | — | Standby | ✓ | Both | No sun, SoC < 0.05 (exhausted) |
-| **5** | High-T solar charges TES | ✓ | Charge ← | ✓ | **Parallel only** | E > E_charge, T_top > 520°C, SoC < 0.90 |
-| **6** | Solar charges TES + process (decoupled) | ✓ | Charge ← | ✓* | **Parallel only** | E > E_process, SoC < 0.40, T_top < 470°C |
+| **5** | High-T solar charges TES | ✓ | Charge ← | ✓ | **PI only** | E > E_charge, T_bot < T_ptc_est−20°C, SoC < 0.90 |
+| **6** | Solar charges TES + process (decoupled) | ✓ | Charge ← | ✓* | **PI only** | E > E_charge, SoC < 0.80 |
 
 \*Mode 6: process runs on an independent auxiliary-heated cycle while PTC charges TES.
 
@@ -290,7 +293,7 @@ python run_parametric.py --sweep full       --days 365 --tag pub
 |-------|--------|
 | `aperture` | 500, 750, 1000, 1500, 2000, 3000 m² |
 | `tes_volume` | D: 4,5,6,7,8,10 m × H: 3,4,5,6,8 m (30 points) |
-| `topology` | Parallel/indirect, Parallel/direct, Series/indirect, Series/direct |
+| `topology` | PI, SD |
 
 ### From Python (for parametric scripting)
 ```python
@@ -477,7 +480,7 @@ git push origin main
 | PBTES model | Pre-validated | From prior publication, no re-validation needed |
 | Plant | Hypothetical reference | No real facility baseline required |
 | Target journals | JES, Energy, Solar Energy | Q1, appropriate scope |
-| Topologies | Parallel/Series × Direct/Indirect | 4 combos for comparison |
+| Topologies | PI vs SD comparison | 2 configs for paper |
 | Air HTF | Comparison case only | Not primary |
 
 ---
